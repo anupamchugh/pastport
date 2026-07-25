@@ -164,16 +164,16 @@ final class BarModel: ObservableObject {
             if visits.isEmpty { guard let v = await unlockAndFetch() else { return }; visits = v }
             let v = visits, apple = usingApple, m = model
             do {
-                let reply = try await Task.detached { () -> String in
-                    if apple, AppleFoundation.isAvailable {
-                        return try await HistoryAgent.ask(question: q, visits: v)   // tool-calling agent
-                    }
+                let reply: String
+                if apple, AppleFoundation.isAvailable {
+                    reply = try await HistoryAgent.ask(question: q, visits: v)
+                } else {
                     let s = Stats.compute(from: v)
-                    let ctx = "Answer only from this person's Safari history. Top sites: "
-                        + s.topHosts.prefix(15).map { "\($0.host)(\($0.visits))" }.joined(separator: ", ")
-                        + ". Categories: " + s.categories.map { "\($0.name):\($0.visits)" }.joined(separator: ", ") + "."
-                    return try await Ollama.generate(model: m, prompt: ctx + "\n\nQ: \(q)\nA:")
-                }.value
+                    let sites = s.topHosts.prefix(15).map { "\($0.host)(\($0.visits))" }.joined(separator: ", ")
+                    let categories = s.categories.map { "\($0.name):\($0.visits)" }.joined(separator: ", ")
+                    let ctx = "Answer only from this person's Safari history. Top sites: \(sites). Categories: \(categories)."
+                    reply = try await Ollama.generate(model: m, prompt: ctx + "\n\nQ: \(q)\nA:")
+                }
                 log.append(QA(role: "assistant", text: reply))
             } catch { log.append(QA(role: "assistant", text: "\(error)")) }
         }
