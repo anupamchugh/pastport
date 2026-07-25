@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Select Swift toolchain
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0"
+
+      - name: Run tests
+        run: swift test
+
+      - name: Validate release scripts
+        run: bash -n install.sh release-preflight.sh
+
+      - name: Check for accidentally committed secrets
+        shell: bash
+        run: |
+          if rg -n -i '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|api[_-]?key\s*[:=]|password\s*[:=])' \
+            --glob '!Tests/**' --glob '!README.md' --glob '!LICENSE' .; then
+            echo "Potential secret pattern found" >&2
+            exit 1
+          fi
