@@ -1,0 +1,29 @@
+# SwiftLint config for pastport. Run: `swiftlint` (brew install swiftlint).
+disabled_rules:
+  - trailing_comma          # we keep trailing commas in multiline literals
+  - todo
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - force_unwrapping
+  - first_where
+  - contains_over_first_not_nil
+  - redundant_nil_coalescing
+
+excluded:
+  - .build
+  - .swiftpm
+  - "**/*.xcodeproj"
+
+line_length:
+  warning: 120
+  error: 160
+  ignores_comments: true
+
+identifier_name:
+  min_length: 1            # single-letter loop/closure vars are fine
+  excluded: [id, db, ns, t, v, h, c, r]
+
+type_name:
+  min_length: 2

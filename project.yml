@@ -1,0 +1,50 @@
+name: Pastport
+options:
+  bundleIdPrefix: com.anupamchugh
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Menu-bar utility that reads Safari history via Full Disk Access — must NOT
+    # be App-Sandboxed (sandbox blocks History.db). Hardened runtime for notarization.
+    ENABLE_HARDENED_RUNTIME: "YES"
+    # Ad-hoc sign the whole bundle consistently so the embedded framework and the app
+    # share one identity — mismatched Team IDs make dyld abort at launch. Swap in a real
+    # Developer ID (CODE_SIGN_STYLE: Automatic + DEVELOPMENT_TEAM) only for distribution.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+
+targets:
+  PastportKit:
+    type: framework
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/PastportKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anupamchugh.PastportKit
+        GENERATE_INFOPLIST_FILE: "YES"
+
+  Pastport:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - Sources/PastportBar
+    dependencies:
+      - target: PastportKit
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anupamchugh.Pastport
+        PRODUCT_NAME: Pastport
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_LSUIElement: "YES"          # menu-bar only, no Dock icon
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        CODE_SIGN_ENTITLEMENTS: Pastport.entitlements
