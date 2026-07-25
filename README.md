@@ -4,6 +4,8 @@
 
 A native macOS app and CLI that reads *your own* Safari history and tells you what it reveals — entirely on-device, behind Touch ID, with no network calls at all.
 
+Pastport is built around a simple boundary: Swift computes the facts; the model phrases only those facts. It is not a browser-history chatbot with a giant prompt. It is a small set of deterministic detectors, a bounded evidence packet, and an on-device Foundation Models pass over that packet.
+
 ```
 📍 Your iPhone left Airbnb on Saturday 10:07 AM
    Fitzroy, Melbourne                         [Open in Maps]  how do we know this?
@@ -25,6 +27,10 @@ No model produced that headline. It's a regex and a string.
 | **Trackers** | who routed your clicks | interstitials, redirects, `utm_`, `fbclid=` |
 
 **No detector contains a brand name.** `www.example.com` → `Example` is derived at runtime. A booking confirmation on a guesthouse nobody has heard of classifies exactly like one on a major airline — because the code matches what a page *is*, never who runs it.
+
+## Why this exists
+
+Safari history is an accidental diary: places, purchases, research spirals, and the companies that routed your clicks. I wanted a tool that could read that diary without uploading it, and that would refuse to turn missing evidence into a confident story.
 
 ---
 
