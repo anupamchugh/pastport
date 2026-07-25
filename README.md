@@ -2,7 +2,7 @@
 
 **Your browser history knows where you live. Pastport helps you read it.**
 
-Pastport is a native macOS app and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. It runs locally, behind Touch ID, with no cloud account or hosted database.
+Pastport is a native macOS app and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. It runs locally, behind Touch ID, with no cloud account or hosted database. It can use Apple Foundation Models on macOS 26 or a local Ollama model; neither path sends data to a cloud service.
 
 ![Pastport Recent view](docs/pastport-recent.png)
 
@@ -15,13 +15,13 @@ The live history database is copied to a temporary location and queried read-onl
 ## What it finds
 
 - **Movements** — coordinates and timestamps carried by links.
-- **Bookings** — confirmations, itineraries, receipts, and flight edits.
+- **Bookings** — confirmations, itineraries, receipts, and booking activity.
 - **Threads** — short bursts of related activity.
 - **Trackers** — redirects, interstitials, and attribution parameters.
 
 ## Install
 
-Requires macOS 26. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
+Requires macOS 14 or later. Apple Foundation Models require macOS 26 with Apple Intelligence enabled. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
 
 ```bash
 git clone https://github.com/anupamchugh/pastport
@@ -47,7 +47,7 @@ pastport ask "what did I book and where did I stay"
 pastport eval --runs 3
 ```
 
-Everything except `ask`, `brief`, and `eval` runs without a model.
+`recent`, `search`, `top`, `when`, `stats`, `bookings`, and `trackers` run without a model. `brief`, `trail`, `threads`, `ask`, `agent`, and `eval` can use Apple Foundation Models or local Ollama.
 
 ## Development
 
