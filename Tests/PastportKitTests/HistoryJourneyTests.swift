@@ -48,6 +48,20 @@ struct HistoryJourneyTests {
         #expect(HistoryJourneyValidation.allowsNarrative("A history page does not confirm a purchase.", evidenceLines: packet))
     }
 
+    @Test("a missing named topic cannot fall back to unrelated travel or site facts")
+    func missingTopicHasOnlyAbsenceEvidence() {
+        let visits = [Visit(time: .now, title: "Hotel booking confirmation", url: "https://stay.example/booking/confirmation")]
+        let missing = JourneyEvidence.make(visits: visits, question: "Atlantis?", focus: .travel)
+        #expect(missing.hasUnmatchedSearch)
+        #expect(missing.evidenceLines.count == 1)
+        #expect(!missing.evidenceLines.joined().contains("Hotel"))
+        #expect(missing.deterministicAnswer.contains("No retained page title or URL matched atlantis"))
+        let general = JourneyEvidence.make(visits: visits, question: "Which travel-related pages appear, and when?", focus: .travel)
+        #expect(!general.hasUnmatchedSearch)
+        let named = JourneyEvidence.make(visits: visits, question: "stay.example?", focus: .travel)
+        #expect(!named.hasUnmatchedSearch && named.matches.count == 1)
+    }
+
     @Test("travel example dates cannot be promoted to the full signal range")
     func travelExampleDatesAreNotTheFullRange() throws {
         let first = try #require(ISO8601DateFormatter().date(from: "2026-02-19T12:00:00Z"))
@@ -103,6 +117,8 @@ struct HistoryJourneyTests {
         let evidence = JourneyEvidence.make(visits: visits, question: "Give an overview of all retained history and leading recorded sites", focus: .overview)
         #expect(evidence.matches.isEmpty)
         #expect(evidence.visitCount == 1)
+        let dated = JourneyEvidence.make(visits: visits, question: "Give an overview of the last 30 days with leading visits", focus: .overview)
+        #expect(dated.matches.isEmpty)
         #expect(!evidence.evidenceLines.contains { $0.hasPrefix("matching visits:") })
     }
 
@@ -112,6 +128,8 @@ struct HistoryJourneyTests {
         #expect(HistoryJourneyValidation.followUpFocus(for: "Research threads?", previous: .travel) == nil)
         #expect(HistoryJourneyValidation.followUpFocus(for: "And privacy?", previous: .travel) == nil)
         #expect(HistoryJourneyValidation.followUpFocus(for: "Tell me more", previous: .research) == .research)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "Narrow this to the last 30 days", previous: .research) == .research)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "Give an overview of the last 30 days", previous: .travel) == nil)
         #expect(HistoryJourneyValidation.followUpFocus(for: "And when?", previous: nil) == nil)
     }
 

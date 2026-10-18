@@ -199,6 +199,9 @@ struct JourneyEvidence: @unchecked Sendable {
     let movements: [LocationLeak]
     let trackers: [TrackerHit]
     let matches: [Visit]
+    let searchTerms: [String]
+
+    var hasUnmatchedSearch: Bool { !searchTerms.isEmpty && matches.isEmpty }
 
     var supportedFocuses: [HistoryFocus] {
         HistoryJourneyValidation.supportedFocuses(
@@ -218,6 +221,7 @@ struct JourneyEvidence: @unchecked Sendable {
     }
 
     var evidenceLines: [String] {
+        if hasUnmatchedSearch { return ["matching visits: no retained page title or URL matched " + searchTerms.joined(separator: ", ")] }
         let categories = stats.categories.prefix(6).map { "\($0.name)=\($0.visits)" }.joined(separator: ", ")
         let topSites = stats.topHosts.prefix(6).map { "\($0.host)=\($0.visits)" }.joined(separator: ", ")
         var lines = [
@@ -262,6 +266,9 @@ struct JourneyEvidence: @unchecked Sendable {
     }
 
     var deterministicAnswer: String {
+        if hasUnmatchedSearch {
+            return "No retained page title or URL matched \(searchTerms.joined(separator: ", ")) in this history window. That does not establish whether a real-world visit or event occurred."
+        }
         switch focus {
         case .overview:
             let top = stats.topHosts.prefix(3).map { "\($0.host) (\($0.visits))" }.joined(separator: ", ")
@@ -291,11 +298,17 @@ struct JourneyEvidence: @unchecked Sendable {
         let selected = focus ?? inferredFocus(for: question, visits: visits)
         let wording = question.lowercased()
         let broadOverview = wording.contains("summarize all")
-            || (wording.contains("overview") && wording.contains("all retained"))
+            || wording.contains("overview")
             || wording.contains("overall pattern")
         // Generic overview words such as "leading" must not select unrelated page
         // titles and make an arbitrary payment page dominate the summary.
-        let keywords = broadOverview ? [] : keywordsFrom(question, max: 4)
+        let queryWords: Set<String> = [
+            "research", "threads", "thread", "topics", "topic", "queries", "query", "search", "searches", "repeated", "recurring", "original",
+            "travel", "related", "booking", "bookings", "hotel", "hotels", "flight", "flights", "trip", "trips", "checkout", "confirmation", "itinerary",
+            "tracking", "patterns", "privacy", "location", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
+            "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching"
+        ]
+        let keywords = broadOverview ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
         var matches: [Visit] = []
         if !keywords.isEmpty {
             for visit in visits {
@@ -322,7 +335,8 @@ struct JourneyEvidence: @unchecked Sendable {
             bookings: cached?.bookings ?? Bookings.scan(from: visits),
             movements: cached?.movements ?? Movements.scan(from: visits),
             trackers: cached?.trackers ?? Trackers.scan(from: visits),
-            matches: Array(matches.prefix(24))
+            matches: Array(matches.prefix(24)),
+            searchTerms: keywords
         )
     }
 
@@ -339,7 +353,7 @@ struct JourneyEvidence: @unchecked Sendable {
         if q.contains("overview") || q.contains("summarize all") || q.contains("overall pattern") { return .overview }
         if q.contains("privacy") || q.contains("track") || q.contains("leak") { return .privacy }
         if q.contains("where") || q.contains("place") || q.contains("location") { return .places }
-        if q.contains("travel") || q.contains("book") || q.contains("flight") || q.contains("hotel") || q.contains("trip") { return .travel }
+        if q.contains("travel") || q.contains("checkout") || q.contains("confirmation") || q.contains("itinerary") || q.contains("book") || q.contains("flight") || q.contains("hotel") || q.contains("trip") { return .travel }
         if q.contains("research") || q.contains("search") || q.contains("thinking") { return .research }
         return .overview
     }
@@ -385,7 +399,7 @@ enum HistoryJourneyValidation {
         guard let previous,
               JourneyEvidence.inferredFocus(for: question, visits: []) == .overview else { return nil }
         let query = question.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let continuationPhrases = ["and ", "when?", "what about ", "tell me more", "show more", "anything else", "how so", "what next", "continue"]
+        let continuationPhrases = ["and ", "when?", "what about ", "tell me more", "show more", "anything else", "how so", "what next", "continue", "narrow this", "what does this evidence", "what do these links"]
         return continuationPhrases.contains(where: query.hasPrefix) ? previous : nil
     }
 
@@ -758,6 +772,7 @@ private final class JourneyRuntime {
         evidence: JourneyEvidence,
         includeSources: Bool
     ) -> String? {
+        guard !evidence.hasUnmatchedSearch else { return nil }
         let lines = labels.prefix(3).compactMap { label in
             evidence.evidenceLines.first { $0.hasPrefix(label.rawValue + ":") }
         }
