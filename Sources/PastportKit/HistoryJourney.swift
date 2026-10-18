@@ -451,7 +451,7 @@ import FoundationModels
 import FoundationModelsKit
 #endif
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 private enum JourneyFocusValue: String, Codable {
     case overview
@@ -461,7 +461,7 @@ private enum JourneyFocusValue: String, Codable {
     case places
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 private struct JourneyRecommendationPayload {
     @Guide(description: "Use only focus values supported by the evidence.")
@@ -470,7 +470,7 @@ private struct JourneyRecommendationPayload {
     var suggestedQuestions: [String]
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 private enum JourneyEvidenceLabel: String {
     case visits, window, categories
@@ -482,7 +482,7 @@ private enum JourneyEvidenceLabel: String {
     case tracking = "tracking signals"
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 private struct JourneyAnswerSection {
     @Guide(description: "Cite only available labels from the evidence packet.", .count(1...3))
@@ -491,14 +491,14 @@ private struct JourneyAnswerSection {
     var text: String
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 private struct JourneyAnswerPayload {
     @Guide(.count(1...3))
     var sections: [JourneyAnswerSection]
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 private final class JourneyProfileState: @unchecked Sendable {
     struct Snapshot: Sendable {
         var visits: [Visit]
@@ -526,7 +526,7 @@ private final class JourneyProfileState: @unchecked Sendable {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @MainActor
 private final class JourneyRuntime {
     private let visits: [Visit]
@@ -545,7 +545,7 @@ private final class JourneyRuntime {
         self.scope = scope
         self.state = JourneyProfileState(visits: visits, scope: scope)
         #if compiler(>=6.4)
-        if #available(macOS 27, *) {
+        if #available(macOS 27, iOS 27, *) {
             self.session = LanguageModelSession(profile: JourneyDynamicProfile(state: state))
         } else {
             self.session = LanguageModelSession(
@@ -563,7 +563,7 @@ private final class JourneyRuntime {
 
     var usesDynamicProfile: Bool {
         #if compiler(>=6.4)
-        if #available(macOS 27, *) { return true }
+        if #available(macOS 27, iOS 27, *) { return true }
         #endif
         return false
     }
@@ -852,7 +852,7 @@ private final class JourneyRuntime {
 
     private func resetSession(history: Transcript = Transcript(entries: [])) {
         #if compiler(>=6.4)
-        if #available(macOS 27, *) {
+        if #available(macOS 27, iOS 27, *) {
             session = LanguageModelSession(profile: JourneyDynamicProfile(state: state), history: history)
         } else {
             session = LanguageModelSession(
@@ -923,7 +923,7 @@ private final class JourneyRuntime {
         _ response: LanguageModelSession.Response<Content>
     ) -> (input: Int, output: Int)? {
         #if compiler(>=6.4)
-        if #available(macOS 27, *) {
+        if #available(macOS 27, iOS 27, *) {
             return (
                 response.usage.input.totalTokenCount,
                 response.usage.output.totalTokenCount
@@ -935,7 +935,7 @@ private final class JourneyRuntime {
 
     private func sessionUsage() -> (input: Int, output: Int)? {
         #if compiler(>=6.4)
-        if #available(macOS 27, *) {
+        if #available(macOS 27, iOS 27, *) {
             return (
                 session.usage.input.totalTokenCount,
                 session.usage.output.totalTokenCount
@@ -968,7 +968,7 @@ private final class JourneyRuntime {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct JourneyTravelBookingsTool: Tool {
     let name = "find_bookings"
     let description = "Find recorded travel-related confirmation, itinerary, checkout and ticket pages only. These page visits do not prove a completed payment, booking or trip."
@@ -982,7 +982,7 @@ struct JourneyTravelBookingsTool: Tool {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 private enum JourneyTools {
     static func tools(for focus: HistoryFocus?, visits: [Visit]) -> [any Tool] {
         switch focus {
@@ -998,7 +998,7 @@ private enum JourneyTools {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 private enum JourneyPrompts {
     static func instructions(scope: String, focus: HistoryFocus?) -> String {
         let boundedScope = String(scope.prefix(240))
@@ -1033,7 +1033,7 @@ private enum JourneyPrompts {
 }
 
 #if compiler(>=6.4)
-@available(macOS 27, *)
+@available(macOS 27, iOS 27, *)
 private struct JourneyDynamicProfile: LanguageModelSession.DynamicProfile {
     let state: JourneyProfileState
 

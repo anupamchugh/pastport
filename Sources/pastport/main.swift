@@ -1,5 +1,6 @@
 import Foundation
 import PastportKit
+import PastportMac
 
 let usage = """
 pastport — private, on-device analysis of your Safari browsing history.

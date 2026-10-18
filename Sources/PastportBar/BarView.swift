@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Photos
 import PastportKit
+import PastportMac
 import UniformTypeIdentifiers
 
 @MainActor

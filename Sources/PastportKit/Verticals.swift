@@ -45,8 +45,7 @@ public enum Verticals {
 
     /// User-editable override at ~/.config/pastport/verticals.json; falls back to defaults.
     public static func load() -> [Vertical] {
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: ".config/pastport/verticals.json")
+        let url = configDirectory.appending(path: "verticals.json")
         guard let data = try? Data(contentsOf: url),
               let verticals = try? JSONDecoder().decode([Vertical].self, from: data),
               !verticals.isEmpty else {

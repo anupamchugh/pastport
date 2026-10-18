@@ -36,7 +36,7 @@ public enum Guided {
     public static func narrate(_ thread: IntentThread,
                                instruction: String? = nil) async throws -> ThreadNarration? {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             let session = LanguageModelSession(instructions: """
                 You read a person's own browsing, on device, for that person. Be plain and \
                 specific. Never judge them. Never name a place, company, or product that is \
@@ -87,7 +87,7 @@ public enum NarrationAttempt: Equatable, Sendable {
 
 /// The generated shape. Note what is absent: there is no `place`, `city`, or `country`
 /// field, so constrained sampling gives the model nowhere to invent one.
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 struct GeneratedNarration {
     @Guide(description: "One sentence: what the person was trying to work out.")

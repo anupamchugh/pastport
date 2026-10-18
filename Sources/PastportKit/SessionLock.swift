@@ -9,9 +9,7 @@ import Foundation
 /// only a timestamp (no bypass token). Use `--relock` (grace 0) for the strict path.
 public enum SessionLock {
     private static var stampURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support")
-        return base.appending(path: "Pastport/unlock.stamp")
+        URL.applicationSupportDirectory.appending(path: "Pastport/unlock.stamp")
     }
 
     /// Returns true if a valid, untampered, in-window unlock stamp exists.

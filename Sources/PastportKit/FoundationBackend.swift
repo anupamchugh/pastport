@@ -13,7 +13,7 @@ public enum AppleFoundation {
     /// readiness (Apple Intelligence enabled, model downloaded) surfaces at run time.
     public static var isAvailable: Bool {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) { return true }
+        if #available(macOS 26, iOS 26, *) { return true }
         #endif
         return false
     }
@@ -22,7 +22,7 @@ public enum AppleFoundation {
     /// Token counts are copied only when the response exposes them.
     public static func run(prompt: String) async throws -> ModelRun {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             let start = Date()
             let session = LanguageModelSession()
             let response = try await session.respond(to: prompt)
@@ -72,14 +72,14 @@ public enum FoundationUsageAccounting {
 }
 
 #if canImport(FoundationModels)
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 func foundationTokenUsage<Content: Generable>(
     from response: LanguageModelSession.Response<Content>
 ) -> FoundationTokenUsage {
     // Runtime availability alone cannot make a newer SDK member compile with
     // an older Xcode. Swift 6.4 ships with the SDK that exposes response usage.
     #if compiler(>=6.4)
-    if #available(macOS 27, *) {
+    if #available(macOS 27, iOS 27, *) {
         return FoundationUsageAccounting.usage(
             input: response.usage.input.totalTokenCount,
             output: response.usage.output.totalTokenCount

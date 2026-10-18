@@ -31,7 +31,7 @@ public enum HistoryAgent {
 
     public static func run(question: String, visits: [Visit]) async throws -> Run {
         #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             let start = ContinuousClock.now
             let session = LanguageModelSession(
                 // Five tools. Apple's guidance is a maximum of 3-5 — a small model gets
@@ -108,7 +108,7 @@ public enum HistoryAgent {
 }
 
 #if canImport(FoundationModels)
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 @Generable
 struct GroundedAnswer {
     @Guide(description: "A concise answer supported by the deterministic evidence packet. If it is absent, say no matching history was found.")
@@ -117,7 +117,7 @@ struct GroundedAnswer {
     var grounding: String
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct SearchHistoryTool: Tool {
     let name = "search_history"
     let description = "Search the person's Safari history by keyword (matches page title or URL). Returns matching visits with time, title, and host."
@@ -142,7 +142,7 @@ struct SearchHistoryTool: Tool {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct StatsTool: Tool {
     let name = "get_stats"
     let description = "Get the person's browsing breakdown: total visits, category counts, and top sites."
@@ -159,7 +159,7 @@ struct StatsTool: Tool {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct ThreadsTool: Tool {
     let name = "find_threads"
     let description = "Find clusters of recorded searches and destination sites. Search text is evidence of browsing, not proof of beliefs, intentions or completed actions."
@@ -187,7 +187,7 @@ struct ThreadsTool: Tool {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct BookingsTool: Tool {
     let name = "find_bookings"
     let description = "Find visits to checkout, confirmation, itinerary and ticket pages. These are page signals, not proof of payment, a completed booking or a trip taken."
@@ -209,7 +209,7 @@ struct BookingsTool: Tool {
     }
 }
 
-@available(macOS 26, *)
+@available(macOS 26, iOS 26, *)
 struct LocationTool: Tool {
     let name = "find_location_leaks"
     let description = "Find coordinates embedded in recorded URLs, with the visit timestamp and source host. A map link does not prove physical presence, a trip or the originating device."
