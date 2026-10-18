@@ -338,13 +338,14 @@ final class BarModel: ObservableObject {
                         session = HistoryJourney(visits: visits, scope: coverage)
                         journey = session
                     }
-                    let result = try await session.answer(q, focus: historyFocus == .overview ? nil : historyFocus) { [weak model = self] partial in
+                    let result = try await session.answer(q) { [weak model = self] partial in
                         guard let model, token == model.generation, model.activeAnswerID == pending.id,
                               let index = model.log.firstIndex(where: { $0.id == pending.id }) else { return }
                         model.log[index].text = partial
                     }
                     guard token == generation, !Task.isCancelled else { return }
                     journeyReceipt = result.receipt; profile = result.receipt.details
+                    if let answeredFocus = HistoryFocus(rawValue: result.receipt.mode) { historyFocus = answeredFocus }
                     reply = result.text
                 } else {
                     let evidence = AskWorkflow.evidence(for: AskWorkflow.intent(for: q), visits: visits)
@@ -592,6 +593,8 @@ struct BarView: View {
                     ForEach(m.log) { Bubble(qa: $0) }
                 }.padding(14)
             }
+            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.topLeading, for: .alignment)
             HStack(spacing: 8) {
                 TextField("Ask about your history…", text: $m.input)
                     .textFieldStyle(.roundedBorder).onSubmit { m.ask() }
