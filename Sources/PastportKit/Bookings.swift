@@ -31,7 +31,7 @@ public struct Booking: Identifiable, Finding {
 
     public var headline: String {
         let when = time.formatted(.dateTime.year().month(.abbreviated).day())
-        return "\(when): \(kind.rawValue) on \(Bookings.name(for: host))"
+        return "\(when): \(kind.rawValue) page on \(Bookings.name(for: host))"
     }
 
     /// Whether this commitment was about going somewhere. Flights, stays and the paperwork

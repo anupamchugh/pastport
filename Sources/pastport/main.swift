@@ -28,6 +28,7 @@ COMMANDS
 
 OPTIONS
   --days N          look back N days (default 7; brief/agent 30; threads 90)
+  --all             use all retained Safari history for `agent`, with coverage
   --limit N         max rows to pull (default 200)
   --interval N      seconds between polls in `watch` (default 300)
   --runs N          samples per case in `eval` (default 3 — models are non-deterministic)
@@ -58,6 +59,7 @@ var interval = 300       // --interval: seconds between polls in `watch`
 var daysExplicit = false  // did the user pass --days? (brief/agent default to a month otherwise)
 var limitExplicit = false // did the user pass --limit? (`threads` shows 12 otherwise)
 var runs = 3              // --runs: samples per eval case (these models are non-deterministic)
+var allRetained = false
 
 var it = CommandLine.arguments.dropFirst().makeIterator()
 while let arg = it.next() {
@@ -70,6 +72,7 @@ while let arg = it.next() {
     case "--grace": if let v = it.next(), let n = Int(v) { grace = max(0, n) }
     case "--relock": relock = true
     case "--sql": sqlOnly = true
+    case "--all": allRetained = true
     case "--raw": showRaw = true
     case "-h", "--help", "help": wantHelp = true
     default: positionals.append(arg)
@@ -80,6 +83,11 @@ if wantHelp { print(usage); exit(0) }
 
 let command = positionals.first ?? "brief"
 let query = positionals.dropFirst().joined(separator: " ")
+
+if allRetained && command != "agent" {
+    FileHandle.standardError.write(Data("pastport: --all is supported by the agent command.\n".utf8))
+    exit(1)
+}
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("pastport: \(message)\n".utf8))
@@ -411,11 +419,16 @@ case "ask":
 
 case "agent":
     if !daysExplicit { days = 30 }   // give the agent a month to drill into
-    let question = query.isEmpty ? "What are my main interests, and is anything tracking me?" : query
-    let visits = loadVisits(keyword: nil, fetchLimit: 300_000)
+    let question = query.isEmpty ? "Give an evidence-based overview of this retained window." : query
     print("On-device agent (Apple Foundation Models, tool-calling) — \(question)\n")
     do {
-        print(try await HistoryAgent.ask(question: question, visits: visits))
+        let snapshot = try fetchHistorySnapshot(days: allRetained ? nil : days)
+        print(snapshot.scope + "\n")
+        let session = HistoryJourney(visits: snapshot.visits, scope: snapshot.scope)
+        let result = try await session.answer(question)
+        print(result.text)
+        print("\n" + result.receipt.summary)
+        await session.clear()
     } catch { fail("\(error)") }
 
 default:

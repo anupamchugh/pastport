@@ -5,6 +5,15 @@ import XCTest
 /// These tests never open Safari and never start a LanguageModelSession.
 final class FoundationPathTests: XCTestCase {
 
+    func testMapAndCheckoutSignalsDoNotClaimCompletedActions() {
+        let links = Movements.scan(from: [visit("Google Maps", "https://maps.google.com/?q=48.8584,2.2945")])
+        XCTAssertFalse(links.isEmpty)
+        XCTAssertFalse(links[0].headline.contains("iPhone"))
+        XCTAssertFalse(links[0].headline.contains("You looked"))
+        let page = Booking(time: .now, host: "example.com", kind: .checkout, title: "Checkout", url: "https://example.com/checkout")
+        XCTAssertTrue(page.headline.contains("checkout page"))
+    }
+
     private func visit(_ title: String, _ url: String, hoursAgo: Int = 1) -> Visit {
         Visit(time: Date().addingTimeInterval(-Double(hoursAgo) * 3600), title: title, url: url)
     }
