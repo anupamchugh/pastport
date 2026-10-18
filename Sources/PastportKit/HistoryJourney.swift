@@ -292,7 +292,7 @@ struct JourneyEvidence: @unchecked Sendable {
         }
     }
 
-    static func make(visits: [Visit], question: String, focus: HistoryFocus?, resolvedScope: HistoryQuestionScope? = nil, cached: JourneyEvidence? = nil) -> JourneyEvidence {
+    static func make(visits: [Visit], question: String, focus: HistoryFocus?, resolvedScope: HistoryQuestionScope? = nil, cached: JourneyEvidence? = nil, matchingRequested: Bool = true) -> JourneyEvidence {
         let scoped = resolvedScope ?? HistoryQuestionScope.resolve(visits: visits, question: question)
         let visits = scoped.visits
         let selected = focus ?? inferredFocus(for: question, visits: visits)
@@ -308,7 +308,7 @@ struct JourneyEvidence: @unchecked Sendable {
             "tracking", "patterns", "privacy", "location", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
             "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching"
         ]
-        let keywords = broadOverview ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
+        let keywords = broadOverview || !matchingRequested ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
         var matches: [Visit] = []
         if !keywords.isEmpty {
             for visit in visits {
@@ -579,7 +579,7 @@ private final class JourneyRuntime {
         isBusy = true
         defer { isBusy = false }
         let start = ContinuousClock.now
-        let evidence = try await prepareEvidence(question: prompt, focus: focus)
+        let evidence = try await prepareEvidence(question: prompt, focus: focus, matchingRequested: false)
         let compacted = await compactIfNeeded()
         let before = Array(session.transcript)
         let fallback = JourneyPlanner.fallbackQuestions(for: evidence)
@@ -785,7 +785,7 @@ private final class JourneyRuntime {
         return candidate + (includeSources ? "\nSource evidence: " + lines.joined(separator: " ") : "")
     }
 
-    private func prepareEvidence(question: String, focus: HistoryFocus?) async throws -> JourneyEvidence {
+    private func prepareEvidence(question: String, focus: HistoryFocus?, matchingRequested: Bool = true) async throws -> JourneyEvidence {
         let visits = self.visits
         let previousScope = questionScope
         let cached = cachedEvidence
@@ -793,7 +793,7 @@ private final class JourneyRuntime {
             try Task.checkCancellation()
             let resolved = HistoryQuestionScope.resolve(visits: visits, question: question, previousScope: previousScope)
             let reusable = JourneyEvidence.canReuse(previous: previousScope, resolved: resolved)
-            let evidence = JourneyEvidence.make(visits: visits, question: question, focus: focus, resolvedScope: resolved, cached: reusable ? cached : nil)
+            let evidence = JourneyEvidence.make(visits: visits, question: question, focus: focus, resolvedScope: resolved, cached: reusable ? cached : nil, matchingRequested: matchingRequested)
             try Task.checkCancellation()
             return (resolved, evidence, reusable)
         }

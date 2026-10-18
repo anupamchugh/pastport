@@ -58,6 +58,9 @@ struct HistoryJourneyTests {
         #expect(missing.deterministicAnswer.contains("No retained page title or URL matched atlantis"))
         let general = JourneyEvidence.make(visits: visits, question: "Which travel-related pages appear, and when?", focus: .travel)
         #expect(!general.hasUnmatchedSearch)
+        let planning = JourneyEvidence.make(visits: visits, question: "Suggest useful evidence trails to revisit. Prioritize concrete research, travel-related pages and tracking patterns.", focus: .overview, matchingRequested: false)
+        #expect(!planning.hasUnmatchedSearch)
+        #expect(planning.evidenceLines.contains { $0.hasPrefix("booking-like pages:") })
         let named = JourneyEvidence.make(visits: visits, question: "stay.example?", focus: .travel)
         #expect(!named.hasUnmatchedSearch && named.matches.count == 1)
     }
