@@ -48,6 +48,46 @@ struct HistoryJourneyTests {
         #expect(HistoryJourneyValidation.allowsNarrative("A history page does not confirm a purchase.", evidenceLines: packet))
     }
 
+    @Test("an overview request is not redirected by a negated trip warning")
+    func overviewIntentPrecedesIncidentalTopics() {
+        #expect(JourneyEvidence.inferredFocus(for: "Summarize all retained history and research. Do not infer trips.", visits: []) == .overview)
+        #expect(JourneyEvidence.inferredFocus(for: "Which booking-like pages appear?", visits: []) == .travel)
+    }
+
+    @Test("cached detector evidence still recomputes each question's matching visits")
+    func cachedEvidenceDoesNotReuseQuestionMatches() {
+        let visits = [
+            Visit(time: Date(timeIntervalSince1970: 1_750_000_000), title: "amber", url: "https://amber.example"),
+            Visit(time: Date(timeIntervalSince1970: 1_750_000_001), title: "azure", url: "https://azure.example")
+        ]
+        let first = JourneyEvidence.make(visits: visits, question: "amber", focus: .overview)
+        let second = JourneyEvidence.make(visits: visits, question: "azure", focus: .overview, cached: first)
+        #expect(first.matches.map(\.title) == ["amber"])
+        #expect(second.matches.map(\.title) == ["azure"])
+        #expect(second.stats.total == 2)
+    }
+
+    @Test("same-size changed windows cannot reuse detector evidence or model context")
+    func cacheRequiresExactVisits() {
+        let a = Visit(time: .now, title: "first", url: "https://first.example")
+        let b = Visit(time: .now, title: "second", url: "https://second.example")
+        let previous = HistoryQuestionScope(visits: [a], rangeDescription: "last 30 days", matchedWindow: true)
+        let same = HistoryQuestionScope(visits: [a], rangeDescription: "last 30 days", matchedWindow: true)
+        let changed = HistoryQuestionScope(visits: [b], rangeDescription: "last 30 days", matchedWindow: true)
+        #expect(JourneyEvidence.canReuse(previous: previous, resolved: same))
+        #expect(!JourneyEvidence.canReuse(previous: previous, resolved: changed))
+        #expect(!JourneyEvidence.canReuse(previous: nil, resolved: same))
+    }
+
+    @Test("matching evidence remains bounded to the first 24 matching visits")
+    func matchingEvidenceIsBounded() {
+        let visits = (0..<40).map { Visit(time: .now, title: "match \($0)", url: "https://fixture.example") }
+        let evidence = JourneyEvidence.make(visits: visits, question: "match", focus: .overview)
+        #expect(evidence.matches.count == 24)
+        #expect(evidence.matches.last?.title == "match 23")
+        #expect(evidence.visitCount == 40)
+    }
+
     @Test("Public contract keeps focus identity and receipt state explicit")
     func publicContract() {
         #expect(HistoryFocus.allCases.map(\.id) == ["overview", "research", "travel", "privacy", "places"])

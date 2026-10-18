@@ -191,7 +191,9 @@ public actor HistoryJourney {
     }
 }
 
-private struct JourneyEvidence {
+// Immutable value snapshot. The detector result types contain only value fields;
+// no mutable references cross the detached preparation boundary.
+struct JourneyEvidence: @unchecked Sendable {
     let focus: HistoryFocus
     let visitCount: Int
     let dateRange: String
@@ -271,19 +273,24 @@ private struct JourneyEvidence {
         }
     }
 
-    static func make(visits: [Visit], question: String, focus: HistoryFocus?, resolvedScope: HistoryQuestionScope? = nil) -> JourneyEvidence {
+    static func make(visits: [Visit], question: String, focus: HistoryFocus?, resolvedScope: HistoryQuestionScope? = nil, cached: JourneyEvidence? = nil) -> JourneyEvidence {
         let scoped = resolvedScope ?? HistoryQuestionScope.resolve(visits: visits, question: question)
         let visits = scoped.visits
         let selected = focus ?? inferredFocus(for: question, visits: visits)
         let keywords = keywordsFrom(question, max: 4)
-        let matches = visits.filter { visit in
-            keywords.contains { key in
-                visit.title.localizedCaseInsensitiveContains(key) || visit.url.localizedCaseInsensitiveContains(key)
+        var matches: [Visit] = []
+        if !keywords.isEmpty {
+            for visit in visits {
+                if keywords.contains(where: { visit.title.localizedCaseInsensitiveContains($0) || visit.url.localizedCaseInsensitiveContains($0) }) {
+                    matches.append(visit)
+                    if matches.count == 24 { break }
+                }
             }
         }
-        let dates = visits.map(\.time).sorted()
         let dateRange: String
-        if let first = dates.first, let last = dates.last {
+        if let cached {
+            dateRange = cached.dateRange
+        } else if let first = visits.map(\.time).min(), let last = visits.map(\.time).max() {
             dateRange = "\(first.formatted(.iso8601.year().month().day())) to \(last.formatted(.iso8601.year().month().day())) · \(scoped.rangeDescription)"
         } else {
             dateRange = scoped.unsupportedReason ?? "no retained visits in \(scoped.rangeDescription)"
@@ -292,17 +299,26 @@ private struct JourneyEvidence {
             focus: selected,
             visitCount: visits.count,
             dateRange: dateRange,
-            stats: Stats.compute(from: visits),
-            threads: Threads.scan(from: visits),
-            bookings: Bookings.scan(from: visits),
-            movements: Movements.scan(from: visits),
-            trackers: Trackers.scan(from: visits),
+            stats: cached?.stats ?? Stats.compute(from: visits),
+            threads: cached?.threads ?? Threads.scan(from: visits),
+            bookings: cached?.bookings ?? Bookings.scan(from: visits),
+            movements: cached?.movements ?? Movements.scan(from: visits),
+            trackers: cached?.trackers ?? Trackers.scan(from: visits),
             matches: Array(matches.prefix(24))
         )
     }
 
+    static func canReuse(previous: HistoryQuestionScope?, resolved: HistoryQuestionScope) -> Bool {
+        guard let previous,
+              previous.rangeDescription == resolved.rangeDescription,
+              previous.unsupportedReason == resolved.unsupportedReason,
+              previous.visits.count == resolved.visits.count else { return false }
+        return zip(previous.visits, resolved.visits).allSatisfy { $0.id == $1.id }
+    }
+
     static func inferredFocus(for question: String, visits: [Visit]) -> HistoryFocus {
         let q = question.lowercased()
+        if q.contains("overview") || q.contains("summarize all") || q.contains("overall pattern") { return .overview }
         if q.contains("privacy") || q.contains("track") || q.contains("leak") { return .privacy }
         if q.contains("where") || q.contains("place") || q.contains("location") { return .places }
         if q.contains("book") || q.contains("flight") || q.contains("hotel") || q.contains("trip") { return .travel }
@@ -475,6 +491,7 @@ private final class JourneyRuntime {
     private var activeRequestCancellation: (() -> Void)?
     private var cancelled = false
     private var questionScope: HistoryQuestionScope?
+    private var cachedEvidence: JourneyEvidence?
 
     init(visits: [Visit], scope: String) {
         self.visits = visits
@@ -515,7 +532,7 @@ private final class JourneyRuntime {
         isBusy = true
         defer { isBusy = false }
         let start = ContinuousClock.now
-        let evidence = prepareEvidence(question: prompt, focus: focus)
+        let evidence = try await prepareEvidence(question: prompt, focus: focus)
         let compacted = await compactIfNeeded()
         let before = Array(session.transcript)
         let fallback = JourneyPlanner.fallbackQuestions(for: evidence)
@@ -578,7 +595,7 @@ private final class JourneyRuntime {
         isBusy = true
         defer { isBusy = false }
         let start = ContinuousClock.now
-        let evidence = prepareEvidence(question: question, focus: focus)
+        let evidence = try await prepareEvidence(question: question, focus: focus)
         var didCompact = await compactIfNeeded()
         var before = Array(session.transcript)
         var usageBeforeTurn = sessionUsage()
@@ -720,16 +737,29 @@ private final class JourneyRuntime {
         return candidate + (includeSources ? "\nSource evidence: " + lines.joined(separator: " ") : "")
     }
 
-    private func prepareEvidence(question: String, focus: HistoryFocus?) -> JourneyEvidence {
-        let resolved = HistoryQuestionScope.resolve(visits: visits, question: question, previousScope: questionScope)
-        let evidence = JourneyEvidence.make(visits: visits, question: question, focus: focus, resolvedScope: resolved)
+    private func prepareEvidence(question: String, focus: HistoryFocus?) async throws -> JourneyEvidence {
+        let visits = self.visits
+        let previousScope = questionScope
+        let cached = cachedEvidence
+        let preparation = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let resolved = HistoryQuestionScope.resolve(visits: visits, question: question, previousScope: previousScope)
+            let reusable = JourneyEvidence.canReuse(previous: previousScope, resolved: resolved)
+            let evidence = JourneyEvidence.make(visits: visits, question: question, focus: focus, resolvedScope: resolved, cached: reusable ? cached : nil)
+            try Task.checkCancellation()
+            return (resolved, evidence, reusable)
+        }
+        activeRequestCancellation = { preparation.cancel() }
+        defer { activeRequestCancellation = nil }
+        let (resolved, evidence, reusable) = try await preparation.value
+        try ensureActive()
         let prior = state.snapshot
-        let changedWindow = questionScope?.rangeDescription != resolved.rangeDescription
         questionScope = resolved
+        cachedEvidence = evidence
         state.update(visits: resolved.visits, scope: "\(scope) · \(resolved.rangeDescription)", focus: evidence.focus)
-        // A changed date scope must not retain answers or tool outputs from a wider
-        // window. Static profiles also need rebuilding when their tool set changes.
-        if changedWindow || (!usesDynamicProfile && prior.focus != evidence.focus) {
+        // Never retain a transcript from a different set of visits. The same-size
+        // case matters when a relative date window slides across a boundary.
+        if !reusable || (!usesDynamicProfile && prior.focus != evidence.focus) {
             resetSession()
         }
         return evidence
