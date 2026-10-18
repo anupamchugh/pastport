@@ -281,6 +281,15 @@ final class ScreenshotReaderTests: XCTestCase {
         XCTAssertEqual(callbackState.calls, 0)
     }
 
+    func testScrubberRedactsOCRConfusableOTPLabels() {
+        for line in ["ОТР: 482931", "ΟΤΡ: 482931", "OTP: 482931"] {
+            let evidence = ScreenshotScrubber.scrub([line])
+            XCTAssertEqual(evidence.text, "[OTP]")
+            XCTAssertEqual(evidence.redactionCount, 1)
+            XCTAssertFalse(evidence.text.contains("482931"))
+        }
+    }
+
     func testProductionReaderRejectsMissingImage() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

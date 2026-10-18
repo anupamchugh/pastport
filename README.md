@@ -62,9 +62,11 @@ Use Xcode and XcodeGen. To produce an explicitly labelled local preview without 
 ./package-release.sh --unsigned-preview
 ```
 
-For a public distribution, supply your Developer ID identity and an existing notarytool keychain profile:
+For a public distribution, supply your Developer ID identity and either existing `asc` authentication or a notarytool keychain profile:
 
 ```bash
+./package-release.sh --sign 'Developer ID Application: Your Name (TEAMID)' --asc
+# Or use an existing notarytool keychain profile:
 ./package-release.sh --sign 'Developer ID Application: Your Name (TEAMID)' --notary-profile YOUR_PROFILE
 ```
 

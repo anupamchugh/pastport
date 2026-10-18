@@ -98,7 +98,8 @@ enum ScreenshotScrubber {
         options: [.caseInsensitive]
     )
     private static let otp = try! NSRegularExpression(
-        pattern: #"\b(?:OTP|one(?:[\s\p{Pd}-]*)time(?:[\s\p{Pd}-]+password)?(?:\s*\(\s*OTP\s*\))?|verification\s+code|security\s+code|passcode)(?=\s|:|\p{Pd}|-|$)(?:\s+is)?\s*(?:[:\p{Pd}-]\s*)?[0-9](?:[\s\p{Pd}-]*[0-9]){3,7}(?![\s\p{Pd}-]*[0-9])"#,
+        // OCR can emit Greek or Cyrillic look-alikes for the Latin OTP label.
+        pattern: #"\b(?:[OОΟ][TТΤ][PРΡ]|one(?:[\s\p{Pd}-]*)time(?:[\s\p{Pd}-]+password)?(?:\s*\(\s*OTP\s*\))?|verification\s+code|security\s+code|passcode)(?=\s|:|\p{Pd}|-|$)(?:\s+is)?\s*(?:[:\p{Pd}-]\s*)?[0-9](?:[\s\p{Pd}-]*[0-9]){3,7}(?![\s\p{Pd}-]*[0-9])"#,
         options: [.caseInsensitive]
     )
     private static let card = try! NSRegularExpression(

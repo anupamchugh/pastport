@@ -3,12 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 preview=false
+use_asc=false
 identity=""
 profile=""
 output=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --unsigned-preview) preview=true; shift ;;
+    --asc) use_asc=true; shift ;;
     --sign|--notary-profile|--output)
       [[ $# -ge 2 && -n "$2" ]] || { echo "Missing value for $1" >&2; exit 2; }
       case "$1" in
@@ -18,22 +20,36 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2 ;;
     --help)
-      echo "Usage: $0 (--unsigned-preview | --sign IDENTITY --notary-profile PROFILE) [--output DIRECTORY]"
+      echo "Usage: $0 (--unsigned-preview | --sign IDENTITY (--asc | --notary-profile PROFILE)) [--output DIRECTORY]"
       exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 if $preview; then
-  [[ -z "$identity" && -z "$profile" ]] || { echo "Preview cannot use distribution credentials." >&2; exit 2; }
+  [[ -z "$identity" && -z "$profile" && "$use_asc" == false ]] || { echo "Preview cannot use distribution credentials." >&2; exit 2; }
 else
-  [[ "$identity" == 'Developer ID Application: '* && -n "$profile" ]] || {
-    echo "Distribution requires --sign Developer-ID-identity and --notary-profile; use --unsigned-preview for a local preview." >&2
-    exit 2
+  [[ "$identity" == 'Developer ID Application: '* ]] || {
+    echo "Distribution requires a Developer ID Application identity." >&2; exit 2;
   }
+  if $use_asc; then
+    [[ -z "$profile" ]] || { echo "Choose --asc or --notary-profile, not both." >&2; exit 2; }
+    command -v asc >/dev/null
+  else
+    [[ -n "$profile" ]] || { echo "Choose --asc or --notary-profile for notarization." >&2; exit 2; }
+  fi
 fi
+notarize() {
+  if $use_asc; then
+    asc notarization submit --file "$1" --wait --timeout 30m
+  else
+    xcrun notarytool submit "$1" --keychain-profile "$profile" --wait
+  fi
+}
 command -v xcodegen >/dev/null
 xcodegen generate
+source_root=$(pwd -P)
 args=(-project Pastport.xcodeproj -scheme Pastport -configuration Release -destination generic/platform=macOS -derivedDataPath .build/release-build build ONLY_ACTIVE_ARCH=NO "ARCHS=arm64 x86_64")
+args+=("OTHER_SWIFT_FLAGS=-file-prefix-map \"$source_root=/Pastport\" -file-compilation-dir /Pastport" SWIFT_SERIALIZE_DEBUGGING_OPTIONS=NO DEPLOYMENT_POSTPROCESSING=YES STRIP_INSTALLED_PRODUCT=YES COPY_PHASE_STRIP=YES)
 if $preview; then
   args+=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual)
 else
@@ -62,9 +78,26 @@ if $preview; then
   codesign --force --deep --sign - "$app"
 fi
 codesign --verify --deep --strict "$app"
+# Fail before any upload if release metadata contains local build paths or a
+# debugging entitlement. Neither belongs in a public distribution.
+/usr/bin/python3 - "$app" <<'PY_CHECK'
+from pathlib import Path
+import plistlib, subprocess, sys
+app = Path(sys.argv[1])
+for path in app.rglob('*'):
+    if path.is_file() and not path.is_symlink() and b'/Users/' in path.read_bytes():
+        raise SystemExit(f"Private build path found in {path.relative_to(app)}")
+result = subprocess.run(['codesign', '-d', '--entitlements', ':-', str(app)], capture_output=True)
+if result.returncode:
+    raise SystemExit('Unable to inspect app entitlements')
+entitlements = plistlib.loads(result.stdout) if result.stdout else {}
+if entitlements.get('com.apple.security.get-task-allow'):
+    raise SystemExit('Release app must not permit debugger attachment')
+print('Release privacy and entitlement checks passed')
+PY_CHECK
 if ! $preview; then
-  ditto -c -k --keepParent "$app" "$stage/notarize.zip"
-  xcrun notarytool submit "$stage/notarize.zip" --keychain-profile "$profile" --wait
+  ditto -c -k --keepParent "$app" "$stage/$name-notarize.zip"
+  notarize "$stage/$name-notarize.zip"
   xcrun stapler staple "$app"
   ./release-preflight.sh "$app"
 fi
@@ -80,7 +113,7 @@ hdiutil create -volname "Pastport $version" -srcfolder "$stage/dmg" -ov -format 
 hdiutil verify "$output/$name.dmg"
 if ! $preview; then
   codesign --force --timestamp --sign "$identity" "$output/$name.dmg"
-  xcrun notarytool submit "$output/$name.dmg" --keychain-profile "$profile" --wait
+  notarize "$output/$name.dmg"
   xcrun stapler staple "$output/$name.dmg"
   xcrun stapler validate "$output/$name.dmg"
   spctl -a -vv --type open --context context:primary-signature "$output/$name.dmg"

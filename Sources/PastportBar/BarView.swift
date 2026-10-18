@@ -357,8 +357,10 @@ struct BarView: View {
                             .font(.caption2).foregroundStyle(.secondary)
                         ForEach(Array(m.photoEvents.enumerated()), id: \.offset) { _, event in
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(event.start.formatted(date: .abbreviated, time: .omitted)).font(.caption.weight(.semibold))
-                                Text("\(event.photoCount) photos · \(event.screenshotCount) screenshots").font(.caption)
+                                let start = event.start.formatted(date: .abbreviated, time: .omitted)
+                                let end = event.end.formatted(date: .abbreviated, time: .omitted)
+                                Text(start == end ? start : "\(start) – \(end)").font(.caption.weight(.semibold))
+                                Text("\(event.photoCount) \(event.photoCount == 1 ? "photo" : "photos") · \(event.screenshotCount) \(event.screenshotCount == 1 ? "screenshot" : "screenshots")").font(.caption)
                                 if !event.labels.isEmpty {
                                     Text("Vision labels: " + event.labels.prefix(5).joined(separator: ", "))
                                         .font(.caption2).foregroundStyle(.secondary)
