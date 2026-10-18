@@ -18,6 +18,14 @@ public enum AppleFoundation {
         return false
     }
 
+    /// True only when Apple Intelligence is enabled and its model is ready on this device.
+    public static var isReady: Bool {
+        #if canImport(FoundationModels)
+        if case .available = SystemLanguageModel.default.availability { return true }
+        #endif
+        return false
+    }
+
     /// Run a prompt on the on-device Apple model. Timing is measured locally.
     /// Token counts are copied only when the response exposes them.
     public static func run(prompt: String) async throws -> ModelRun {

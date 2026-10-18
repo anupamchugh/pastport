@@ -8,6 +8,12 @@ import Vision
 /// The only Photos boundary consumed by Pastport's deterministic photo code.
 public protocol PhotoLibraryReading: Sendable {
     func records(since: Date, limit: Int) async throws -> [PhotoRecord]
+    /// Shows the system Photos prompt once, only when the person chose to read photos.
+    func requestAccess() async
+}
+
+public extension PhotoLibraryReading {
+    func requestAccess() async {}
 }
 
 public enum PhotoLibraryError: Error, Equatable, Sendable {
@@ -37,6 +43,14 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
             let assets = try await metadata(since, limit)
             return try await Self.makeRecords(assets, classify: classify)
         }
+    }
+
+    public func requestAccess() async {
+        #if canImport(Photos)
+        if PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined {
+            _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
+        #endif
     }
 
     public func records(since: Date, limit: Int = 500) async throws -> [PhotoRecord] {

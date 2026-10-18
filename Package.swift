@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v26), .iOS(.v26)],
     products: [
         .library(name: "PastportKit", targets: ["PastportKit"]),
+        .library(name: "PastportUI", targets: ["PastportUI"]),
         .library(name: "PastportMac", targets: ["PastportMac"]),
     ],
     dependencies: [
@@ -21,6 +22,11 @@ let package = Package(
             .product(name: "FoundationModelsTools", package: "FoundationModelsKit"),
             .product(name: "FoundationLabCore", package: "Foundation-Models-Framework-Lab"),
         ]),
+        // Shared SwiftUI views for the Mac and iOS apps. No AppKit, UIKit or I/O.
+        .target(name: "PastportUI", dependencies: [
+            "PastportKit",
+            .product(name: "FoundationLabCore", package: "Foundation-Models-Framework-Lab"),
+        ]),
         // Mac-only adapters: Safari's database via /usr/bin/sqlite3, osascript, local Ollama.
         .target(name: "PastportMac", dependencies: ["PastportKit"]),
         .executableTarget(
@@ -29,9 +35,8 @@ let package = Package(
         ),
         .executableTarget(
             name: "PastportBar",
-            dependencies: ["PastportKit", "PastportMac"]
+            dependencies: ["PastportKit", "PastportUI", "PastportMac"]
         ),
-        .testTarget(name: "PastportBarTests", dependencies: ["PastportBar"]),
         .testTarget(
             name: "PastportKitTests",
             dependencies: ["PastportKit"]

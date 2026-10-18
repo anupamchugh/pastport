@@ -1,9 +1,9 @@
-import Combine
 import Foundation
 import FoundationLabCore
 import FoundationModels
 import FoundationModelsKit
 import FoundationModelsTools
+import Observation
 
 #if canImport(HealthKit)
 import HealthKit
@@ -324,7 +324,8 @@ private extension Duration {
 
 /// Optional, source-separated connected-tools assistant for Pastport.
 @MainActor
-public final class ConnectedAssistant: ObservableObject {
+@Observable
+public final class ConnectedAssistant {
     public struct Message: Identifiable, Hashable, Sendable {
         public let id: UUID
         public let role: Role
@@ -342,21 +343,21 @@ public final class ConnectedAssistant: ObservableObject {
         }
     }
 
-    @Published public var draft = ""
-    @Published public private(set) var messages: [Message] = []
-    @Published public private(set) var selectedTools: [FoundationLabBuiltInTool] = []
-    @Published public private(set) var toolReceipts: [ConnectedToolReceipt] = []
-    @Published public private(set) var pendingApproval: ConnectedToolApprovalRequest?
-    @Published public private(set) var status = "Connected tools are off until you choose them."
-    @Published public private(set) var isLoading = false
-    @Published public private(set) var currentTokenCount = 0
-    @Published public private(set) var currentTokenUsage: ModelTokenUsage?
-    @Published public private(set) var lastTurnUsage: ModelTokenUsage?
-    @Published public private(set) var maxContextSize: Int
-    @Published public private(set) var sessionCount = 1
-    @Published public private(set) var generation = UUID()
+    public var draft = ""
+    public private(set) var messages: [Message] = []
+    public private(set) var selectedTools: [FoundationLabBuiltInTool] = []
+    public private(set) var toolReceipts: [ConnectedToolReceipt] = []
+    public private(set) var pendingApproval: ConnectedToolApprovalRequest?
+    public private(set) var status = "Connected tools are off until you choose them."
+    public private(set) var isLoading = false
+    public private(set) var currentTokenCount = 0
+    public private(set) var currentTokenUsage: ModelTokenUsage?
+    public private(set) var lastTurnUsage: ModelTokenUsage?
+    public private(set) var maxContextSize: Int
+    public private(set) var sessionCount = 1
+    public private(set) var generation = UUID()
 
-    private lazy var approval: ConnectedToolApprovalCoordinator = ConnectedToolApprovalCoordinator(
+    @ObservationIgnored private lazy var approval: ConnectedToolApprovalCoordinator = ConnectedToolApprovalCoordinator(
         onRequest: { [weak self] request in
             guard let self else { return }
             guard self.generation == request.generation else {
@@ -366,9 +367,9 @@ public final class ConnectedAssistant: ObservableObject {
             self.pendingApproval = request
         }
     )
-    private var engine: FoundationModelConversationEngine
-    private var operation: Task<Void, Never>?
-    private var usageBeforeTurn: ModelTokenUsage?
+    @ObservationIgnored private var engine: FoundationModelConversationEngine
+    @ObservationIgnored private var operation: Task<Void, Never>?
+    @ObservationIgnored private var usageBeforeTurn: ModelTokenUsage?
 
     public init() {
         let defaultContextSize = 4_096
@@ -403,7 +404,7 @@ public final class ConnectedAssistant: ObservableObject {
 
     public func toggleTool(_ tool: FoundationLabBuiltInTool) {
         guard ConnectedAssistantPolicy.isAvailable(tool) else {
-            status = "Health is unavailable on this Mac and remains disabled."
+            status = "Health is unavailable on this device and remains disabled."
             return
         }
         guard ConnectedAssistantPolicy.canSelect(tool, alongside: selectedTools) else {

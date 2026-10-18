@@ -1,11 +1,10 @@
 import FoundationLabCore
-import SwiftUI
-
 import PastportKit
+import SwiftUI
 
 /// A small, explicit surface for connected tools. It never receives HistoryJourney data.
 public struct ConnectedAssistantView: View {
-    @ObservedObject private var model: ConnectedAssistant
+    @Bindable private var model: ConnectedAssistant
 
     public init(model: ConnectedAssistant) {
         self.model = model
@@ -105,6 +104,7 @@ public struct ConnectedAssistantView: View {
                 ForEach(model.toolReceipts) { receipt in
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: receipt.status == .completed ? "checkmark.circle" : "xmark.circle")
+                            .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(receipt.toolName) · \(receipt.status.rawValue)")
                                 .font(.caption.weight(.semibold))
@@ -115,6 +115,7 @@ public struct ConnectedAssistantView: View {
                         }
                     }
                     .foregroundStyle(receipt.status == .completed ? .green : .orange)
+                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -129,7 +130,7 @@ public struct ConnectedAssistantView: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { model.send() }
             if model.isLoading {
-                Button("Cancel") { model.cancel() }
+                Button("Stop") { model.cancel() }
                     .buttonStyle(.bordered)
             } else {
                 Button("Send") { model.send() }
