@@ -48,6 +48,55 @@ struct HistoryJourneyTests {
         #expect(HistoryJourneyValidation.allowsNarrative("A history page does not confirm a purchase.", evidenceLines: packet))
     }
 
+    @Test("travel packets exclude unrelated confirmations and raw booking paths")
+    func travelEvidenceMatchesExploreScope() {
+        let visits = [
+            Visit(time: .now, title: "Authorize application", url: "https://code.example/login/device/confirmation/private-code"),
+            Visit(time: .now, title: "Hotel booking confirmation", url: "https://stay.example/booking/confirmation/private-reservation")
+        ]
+        let evidence = JourneyEvidence.make(visits: visits, question: "travel pages", focus: .travel)
+        let packet = evidence.evidenceLines.joined(separator: "\n")
+        #expect(packet.contains("Hotel booking confirmation"))
+        #expect(!packet.contains("Authorize application"))
+        #expect(!packet.contains("private-code"))
+        #expect(!packet.contains("private-reservation"))
+        #expect(evidence.travelBookings.count == 1)
+        #expect(!evidence.deterministicAnswer.contains("Authorize application"))
+        #expect(!packet.contains("location-bearing URLs:"))
+    }
+
+    #if canImport(FoundationModels)
+    @Test("the travel tool cannot return an unrelated app authorization page")
+    func travelToolEnforcesTravelOnly() async throws {
+        let tool = JourneyTravelBookingsTool(visits: [
+            Visit(time: .now, title: "Authorize application", url: "https://code.example/login/device/confirmation"),
+            Visit(time: .now, title: "Hotel booking confirmation", url: "https://stay.example/booking/confirmation")
+        ])
+        let output = try await tool.call(arguments: .init())
+        #expect(output.contains("Hotel booking confirmation"))
+        #expect(!output.contains("Authorize application"))
+        #expect(output.contains("completion is not verified"))
+    }
+    #endif
+
+    @Test("a broad overview does not promote pages matching generic instruction words")
+    func overviewDoesNotSelectIncidentalTitles() {
+        let visits = [Visit(time: .now, title: "Leading checkout platform", url: "https://fixture.example")]
+        let evidence = JourneyEvidence.make(visits: visits, question: "Give an overview of all retained history and leading recorded sites", focus: .overview)
+        #expect(evidence.matches.isEmpty)
+        #expect(evidence.visitCount == 1)
+        #expect(!evidence.evidenceLines.contains { $0.hasPrefix("matching visits:") })
+    }
+
+    @Test("short new topics switch profiles while genuine follow-ups retain focus")
+    func followUpsDoNotCaptureNewTopics() {
+        #expect(HistoryJourneyValidation.followUpFocus(for: "And when?", previous: .travel) == .travel)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "Research threads?", previous: .travel) == nil)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "And privacy?", previous: .travel) == nil)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "Tell me more", previous: .research) == .research)
+        #expect(HistoryJourneyValidation.followUpFocus(for: "And when?", previous: nil) == nil)
+    }
+
     @Test("an overview request is not redirected by a negated trip warning")
     func overviewIntentPrecedesIncidentalTopics() {
         #expect(JourneyEvidence.inferredFocus(for: "Summarize all retained history and research. Do not infer trips.", visits: []) == .overview)

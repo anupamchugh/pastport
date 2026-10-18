@@ -9,7 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "1.3.0"
-    CURRENT_PROJECT_VERSION: "6"
+    CURRENT_PROJECT_VERSION: "7"
     # Menu-bar utility that reads Safari history via Full Disk Access — must NOT
     # be App-Sandboxed (sandbox blocks History.db). Hardened runtime for notarization.
     ENABLE_HARDENED_RUNTIME: "YES"

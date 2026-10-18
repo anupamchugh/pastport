@@ -126,7 +126,7 @@ public actor HistoryJourney {
         let requestEpoch = epoch
         let runtime = try await runtimeForCurrentSession()
         turn += 1
-        let effectiveFocus = focus ?? (isLikelyFollowUp(prompt) ? lastFocus : nil)
+        let effectiveFocus = focus ?? HistoryJourneyValidation.followUpFocus(for: prompt, previous: lastFocus) ?? .overview
         lastFocus = effectiveFocus ?? JourneyEvidence.inferredFocus(for: prompt, visits: visits)
         let result = try await runtime.recommend(
             prompt: prompt,
@@ -149,7 +149,7 @@ public actor HistoryJourney {
         let requestEpoch = epoch
         let runtime = try await runtimeForCurrentSession()
         turn += 1
-        let effectiveFocus = focus ?? (isLikelyFollowUp(question) ? lastFocus : nil)
+        let effectiveFocus = focus ?? HistoryJourneyValidation.followUpFocus(for: question, previous: lastFocus)
         lastFocus = effectiveFocus ?? JourneyEvidence.inferredFocus(for: question, visits: visits)
         let result = try await runtime.answer(
             question: question,
@@ -185,10 +185,6 @@ public actor HistoryJourney {
         return created
     }
 
-    private func isLikelyFollowUp(_ text: String) -> Bool {
-        let words = text.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
-        return words.count <= 5 && lastFocus != nil
-    }
 }
 
 // Immutable value snapshot. The detector result types contain only value fields;
@@ -207,11 +203,13 @@ struct JourneyEvidence: @unchecked Sendable {
     var supportedFocuses: [HistoryFocus] {
         HistoryJourneyValidation.supportedFocuses(
             hasResearch: !threads.isEmpty,
-            hasBookings: !bookings.isEmpty,
+            hasBookings: !travelBookings.isEmpty,
             hasLocationEvidence: !movements.isEmpty || !trackers.isEmpty,
             hasNamedPlace: movements.contains(where: { $0.place != nil })
         )
     }
+
+    var travelBookings: [Booking] { bookings.filter(\.isTravel) }
 
     var evidenceLines: [String] {
         let categories = stats.categories.prefix(6).map { "\($0.name)=\($0.visits)" }.joined(separator: ", ")
@@ -227,25 +225,32 @@ struct JourneyEvidence: @unchecked Sendable {
                 "\(visit.time.formatted(.iso8601.year().month().day())) | \(visit.host) | \(visit.title.prefix(180))"
             }.joined(separator: " || "))
         }
-        if !threads.isEmpty {
+        if !threads.isEmpty && (focus == .research || focus == .overview) {
             lines.append("research threads: " + threads.prefix(8).map { thread in
                 "\(thread.headline.prefix(100)) [\(thread.queries.prefix(2).map { String($0.prefix(100)) }.joined(separator: "; "))]"
             }.joined(separator: " || "))
         }
-        if !bookings.isEmpty {
-            lines.append("booking-like pages: " + bookings.prefix(12).map { booking in
-                "\(booking.headline) | \(booking.title.prefix(180)) | \(booking.url.prefix(220))"
+        let travel = travelBookings
+        if !travel.isEmpty && (focus == .travel || focus == .overview) {
+            lines.append("booking-like pages: \(travel.count) travel-related page signals; selected examples: " + travel.prefix(12).map { booking in
+                "\(booking.headline) | \(booking.title.prefix(180)) | host \(booking.host)"
             }.joined(separator: " || "))
         }
-        if !movements.isEmpty {
-            lines.append("location-bearing URLs: " + movements.prefix(12).map { movement in
-                "\(movement.time.formatted(.iso8601.year().month().day())) | \(movement.place ?? "coordinate only") | \(movement.mapProvider)"
-            }.joined(separator: " || "))
+        if focus == .privacy || focus == .places {
+            if !movements.isEmpty {
+                lines.append("location-bearing URLs: " + movements.prefix(12).map { movement in
+                    "\(movement.time.formatted(.iso8601.year().month().day())) | \(movement.place ?? "coordinate only") | \(movement.mapProvider)"
+                }.joined(separator: " || "))
+            }
+        } else if focus == .overview {
+            lines.append("location-bearing URLs: \(movements.count) map-link signals; no physical presence inferred")
         }
-        if !trackers.isEmpty {
+        if focus == .privacy, !trackers.isEmpty {
             lines.append("tracking signals: " + trackers.prefix(8).map {
-                "\($0.host)=\($0.kind.rawValue):\($0.count)"
+                "\($0.host): \($0.kind.rawValue), \($0.count) recorded visits"
             }.joined(separator: " || "))
+        } else if focus == .overview {
+            lines.append("tracking signals: \(trackers.count) recorded redirect or tracking patterns")
         }
         return lines.map { String($0.prefix(1_000)) }
     }
@@ -259,9 +264,10 @@ struct JourneyEvidence: @unchecked Sendable {
             guard !threads.isEmpty else { return "I found no deterministic research thread in this retained window." }
             return "I found \(threads.count) research thread\(threads.count == 1 ? "" : "s"): " + threads.prefix(4).map(\.headline).joined(separator: "; ") + ". These are grouped from search-page titles; they do not establish intent beyond the words shown."
         case .travel:
-            guard !bookings.isEmpty else { return "I found no booking-like page in this retained window." }
-            let lines = bookings.prefix(6).map { "\($0.headline) (\($0.title.isEmpty ? $0.url : $0.title))" }.joined(separator: "; ")
-            return "I found \(bookings.count) booking-like history entr\(bookings.count == 1 ? "y" : "ies"): \(lines). A history page is evidence that it was visited; it does not confirm a purchase, completed booking, or trip."
+            let travel = travelBookings
+            guard !travel.isEmpty else { return "I found no travel-related booking-like page in this retained window." }
+            let lines = travel.prefix(6).map { "\($0.headline) (\($0.title.isEmpty ? $0.host : $0.title))" }.joined(separator: "; ")
+            return "I found \(travel.count) travel-related page signal\(travel.count == 1 ? "" : "s"): \(lines). A history page is evidence that it was visited; it does not confirm a purchase, completed booking, or trip."
         case .privacy:
             guard !movements.isEmpty || !trackers.isEmpty else { return "I found no deterministic location or redirect tracking signal in this retained window." }
             let tracking = trackers.isEmpty ? "" : " I also found \(trackers.count) redirect or tracking signal\(trackers.count == 1 ? "" : "s") in recorded URLs."
@@ -277,7 +283,13 @@ struct JourneyEvidence: @unchecked Sendable {
         let scoped = resolvedScope ?? HistoryQuestionScope.resolve(visits: visits, question: question)
         let visits = scoped.visits
         let selected = focus ?? inferredFocus(for: question, visits: visits)
-        let keywords = keywordsFrom(question, max: 4)
+        let wording = question.lowercased()
+        let broadOverview = wording.contains("summarize all")
+            || (wording.contains("overview") && wording.contains("all retained"))
+            || wording.contains("overall pattern")
+        // Generic overview words such as "leading" must not select unrelated page
+        // titles and make an arbitrary payment page dominate the summary.
+        let keywords = broadOverview ? [] : keywordsFrom(question, max: 4)
         var matches: [Visit] = []
         if !keywords.isEmpty {
             for visit in visits {
@@ -361,6 +373,14 @@ enum HistoryJourneyValidation {
         if hasLocationEvidence { result.append(.privacy) }
         if hasNamedPlace { result.append(.places) }
         return result
+    }
+
+    static func followUpFocus(for question: String, previous: HistoryFocus?) -> HistoryFocus? {
+        guard let previous,
+              JourneyEvidence.inferredFocus(for: question, visits: []) == .overview else { return nil }
+        let query = question.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let continuationPhrases = ["and ", "when?", "what about ", "tell me more", "show more", "anything else", "how so", "what next", "continue"]
+        return continuationPhrases.contains(where: query.hasPrefix) ? previous : nil
     }
 
     static func allowsNarrative(_ text: String, evidenceLines: [String]) -> Bool {
@@ -921,13 +941,27 @@ private final class JourneyRuntime {
 }
 
 @available(macOS 26, *)
+struct JourneyTravelBookingsTool: Tool {
+    let name = "find_bookings"
+    let description = "Find recorded travel-related confirmation, itinerary, checkout and ticket pages only. These page visits do not prove a completed payment, booking or trip."
+    let visits: [Visit]
+
+    @Generable
+    struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        try await BookingsTool(visits: visits).call(arguments: .init(travelOnly: true))
+    }
+}
+
+@available(macOS 26, *)
 private enum JourneyTools {
     static func tools(for focus: HistoryFocus?, visits: [Visit]) -> [any Tool] {
         switch focus {
         case .research:
             [SearchHistoryTool(visits: visits), ThreadsTool(visits: visits), StatsTool(visits: visits)]
         case .travel:
-            [SearchHistoryTool(visits: visits), BookingsTool(visits: visits), StatsTool(visits: visits)]
+            [SearchHistoryTool(visits: visits), JourneyTravelBookingsTool(visits: visits), StatsTool(visits: visits)]
         case .privacy, .places:
             [SearchHistoryTool(visits: visits), LocationTool(visits: visits), StatsTool(visits: visits)]
         case .overview, .none:
@@ -958,11 +992,12 @@ private enum JourneyPrompts {
 
     static func answer(question: String, evidence: JourneyEvidence) -> String {
         let boundedQuestion = String(question.prefix(1_000))
+        let availableLabels = evidence.evidenceLines.compactMap { $0.split(separator: ":", maxSplits: 1).first }.joined(separator: ", ")
         return """
         Answer the question using the evidence packet. Return one to three short sections. Each section must first cite the available evidenceIDs, then give one or two factual sentences. Only cite labels that appear in the packet. Use exact counts, dates, hosts, and places only from the packet. A booking-like page proves only that a page was visited; never claim checkout, purchase, confirmation, or travel completion. If the packet is insufficient, say so. Do not repeat raw URLs unless needed.
         QUESTION: \(boundedQuestion)
         CURRENT FOCUS: \(evidence.focus.rawValue)
-        AVAILABLE EVIDENCE LABELS: visits, window, categories, top sites, matching visits, research threads, booking-like pages, location-bearing URLs, tracking signals
+        AVAILABLE EVIDENCE LABELS: \(availableLabels)
         EVIDENCE:
         \(evidence.evidenceLines.joined(separator: "\n"))
         """
@@ -987,7 +1022,7 @@ private struct JourneyDynamicProfile: LanguageModelSession.DynamicProfile {
             LanguageModelSession.Profile {
                 Instructions(JourneyPrompts.instructions(scope: snapshot.scope, focus: .travel))
                 SearchHistoryTool(visits: snapshot.visits)
-                BookingsTool(visits: snapshot.visits)
+                JourneyTravelBookingsTool(visits: snapshot.visits)
                 StatsTool(visits: snapshot.visits)
             }
         } else if snapshot.focus == .privacy || snapshot.focus == .places {

@@ -592,6 +592,8 @@ struct BarView: View {
                     ForEach(m.log) { Bubble(qa: $0) }
                 }.padding(14)
             }
+            .defaultScrollAnchor(.bottom)
+            .defaultScrollAnchor(.topLeading, for: .alignment)
             HStack(spacing: 8) {
                 TextField("Ask about your history…", text: $m.input)
                     .textFieldStyle(.roundedBorder).onSubmit { m.ask() }
