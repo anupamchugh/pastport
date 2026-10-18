@@ -7,16 +7,6 @@ public protocol HistorySource: Sendable {
     func snapshot(days: Int?) async throws -> HistorySnapshot
 }
 
-/// Fictional rows for previews, tests and debug screenshots. Never reads Safari.
-public struct DemoHistorySource: HistorySource {
-    public init() {}
-
-    public func snapshot(days: Int?) async throws -> HistorySnapshot {
-        HistorySnapshot(visits: DemoData.visits, sourceCount: 1,
-                        sourceRows: DemoData.visits.count, isComplete: true)
-    }
-}
-
 public enum UnlockResult: Sendable, Equatable {
     case unlocked
     case cancelled

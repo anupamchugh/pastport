@@ -67,36 +67,36 @@ public final class TimelineModel {
         }
     }
     public var assistantSource: AssistantSource = .evidence
-    public private(set) var historyFocus: HistoryFocus = .overview
-    public private(set) var recommendedFocuses: [HistoryFocus] = [.overview]
-    public private(set) var suggestedQuestions: [String] = []
-    public private(set) var sites: [HostStat] = []
-    public private(set) var trackerSignals: [TrackerHit] = []
-    public private(set) var historyLoaded = false
-    public private(set) var journeyReceipt: JourneyReceipt?
+    public internal(set) var historyFocus: HistoryFocus = .overview
+    public internal(set) var recommendedFocuses: [HistoryFocus] = [.overview]
+    public internal(set) var suggestedQuestions: [String] = []
+    public internal(set) var sites: [HostStat] = []
+    public internal(set) var trackerSignals: [TrackerHit] = []
+    public internal(set) var historyLoaded = false
+    public internal(set) var journeyReceipt: JourneyReceipt?
     public let connectedAssistant = ConnectedAssistant()
 
-    public private(set) var models: [String] = []
+    public internal(set) var models: [String] = []
     public var model = ""
 
-    public private(set) var movements: [LocationLeak] = []
-    public private(set) var threads: [IntentThread] = []
-    public private(set) var travel: [Booking] = []
-    public private(set) var themes: [(name: String, visits: Int)] = []
+    public internal(set) var movements: [LocationLeak] = []
+    public internal(set) var threads: [IntentThread] = []
+    public internal(set) var travel: [Booking] = []
+    public internal(set) var themes: [(name: String, visits: Int)] = []
 
-    public private(set) var turns: [AskTurn] = []
+    public internal(set) var turns: [AskTurn] = []
     public var input = ""
 
-    public private(set) var coverage = ""
-    public private(set) var profile = ""
+    public internal(set) var coverage = ""
+    public internal(set) var profile = ""
     public var status = ""
-    public private(set) var busy = false
-    public private(set) var photoEvents: [PhotoEvent] = []
-    public private(set) var photoStatus = TimelineModel.photosClosed
-    public private(set) var screenshots: [AddedScreenshot] = []
-    public private(set) var screenshotStatus = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
+    public internal(set) var busy = false
+    public internal(set) var photoEvents: [PhotoEvent] = []
+    public internal(set) var photoStatus = TimelineModel.photosClosed
+    public internal(set) var screenshots: [AddedScreenshot] = []
+    public internal(set) var screenshotStatus = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
     /// Changes on every lock so views drop any local disclosure state.
-    public private(set) var contentID = UUID()
+    public internal(set) var contentID = UUID()
 
     /// False on iPhone and iPad, where iOS does not let apps read Safari history.
     public var canReadHistory: Bool { history != nil }
@@ -108,14 +108,17 @@ public final class TimelineModel {
     @ObservationIgnored private let timelineAnswerer: any TimelineAnswering
     @ObservationIgnored private let localModels: LocalModels?
     @ObservationIgnored private let appleIntelligenceReady: @Sendable () -> Bool
-    @ObservationIgnored private let demoMode: Bool
+    #if DEBUG
+    /// Debug builds only: fictional data instead of the real sources.
+    @ObservationIgnored public var demoMode = false
+    #endif
     @ObservationIgnored private var journey: HistoryJourney?
     @ObservationIgnored private var operation: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var activeAnswerID: UUID?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var unlocked = false
-    @ObservationIgnored private var visits: [Visit] = []
+    @ObservationIgnored var visits: [Visit] = []
 
     static let photosClosed = "Photos are closed. Read activity when you choose."
     public static let appleModelName = AppleFoundation.displayName
@@ -127,9 +130,7 @@ public final class TimelineModel {
         authenticator: any Authenticating = DeviceAuthenticator(),
         timelineAnswerer: any TimelineAnswering = FoundationTimelineAnswerer(),
         localModels: LocalModels? = nil,
-        appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady },
-        demoMode: Bool = false
-    ) {
+        appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady }) {
         self.history = history
         self.photos = photos
         self.screenshotReader = screenshotReader
@@ -137,7 +138,6 @@ public final class TimelineModel {
         self.timelineAnswerer = timelineAnswerer
         self.localModels = localModels
         self.appleIntelligenceReady = appleIntelligenceReady
-        self.demoMode = demoMode
     }
 
     public var usingApple: Bool { model == Self.appleModelName }
@@ -150,11 +150,13 @@ public final class TimelineModel {
     public func start() {
         guard !started else { return }
         started = true
+        #if DEBUG
         if demoMode {
             models = ["Demo data"]; model = "Demo data"
             loadDemo()
             return
         }
+        #endif
         status = canReadHistory
             ? "History is closed. Read your history when you choose."
             : "Your timeline is closed. Read photo activity or add a screenshot when you choose."
@@ -184,22 +186,19 @@ public final class TimelineModel {
         photoStatus = Self.photosClosed
         status = "Locked. Cached history, photo activity, screenshots and answers cleared."
         contentID = UUID()
-        if !demoMode { authenticator.relock() }
+        #if DEBUG
+        if demoMode { return }
+        #endif
+        authenticator.relock()
     }
 
     // MARK: Photos
 
     public func readPhotos() {
         guard !busy else { return }
-        if demoMode {
-            let now = Date()
-            photoEvents = PhotoEvents.cluster([
-                PhotoRecord(time: now, isScreenshot: false, labels: ["landscape"]),
-                PhotoRecord(time: now.addingTimeInterval(60), isScreenshot: true, labels: [])
-            ])
-            photoStatus = "Demo photo activity · fictional records; no library read"
-            return
-        }
+        #if DEBUG
+        if demoMode { loadDemoPhotos(); return }
+        #endif
         let token = generation
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
         busy = true
@@ -268,39 +267,6 @@ public final class TimelineModel {
 
     // MARK: History (Mac)
 
-    private func loadDemo() {
-        guard canReadHistory else {
-            // iPhone and iPad: fictional photo bursts and one fictional booking screenshot.
-            let base = Date(timeIntervalSince1970: 1_751_328_000)
-            photoEvents = PhotoEvents.cluster([
-                PhotoRecord(time: base, isScreenshot: false, labels: ["beach", "sky"]),
-                PhotoRecord(time: base.addingTimeInterval(600), isScreenshot: false, labels: ["beach"]),
-                PhotoRecord(time: base.addingTimeInterval(900), isScreenshot: true, labels: []),
-                PhotoRecord(time: base.addingTimeInterval(-6 * 86_400), isScreenshot: false, labels: ["food"]),
-            ])
-            photoStatus = "Demo photo activity · fictional records; no library read"
-            screenshots = [AddedScreenshot(name: "Demo booking", addedAt: base, evidence: ScreenshotScrubber.scrub([
-                "Demo Stay, Paris", "Booking reference DEMO42", "Check-in Tue 1 Jul",
-                "Sent to guest@example.com", "Card 4111 1111 1111 1111",
-            ]))]
-            status = "Demo data · no library read"
-            return
-        }
-        let v = DemoData.visits
-        visits = v
-        let s = Stats.compute(from: v)
-        movements = Movements.scan(from: v)
-        threads = Threads.scan(from: v, limit: 6)
-        travel = Bookings.scan(from: v).filter(\.isTravel)
-        themes = s.categories.prefix(6).map { (name: $0.name, visits: $0.visits) }
-        sites = s.topHosts
-        trackerSignals = Trackers.scan(from: v)
-        historyLoaded = true
-        recommendedFocuses = availableFocuses
-        suggestedQuestions = questions(for: .overview)
-        status = "Demo data · no history read"
-    }
-
     private func unlockAndFetch(token: UUID) async -> [Visit]? {
         guard let history else { return nil }
         if !unlocked {
@@ -361,7 +327,7 @@ public final class TimelineModel {
     }
 
     public func questions(for focus: HistoryFocus) -> [String] {
-        guard canReadHistory || demoMode else {
+        guard canReadHistory else {
             return ["What does my photo activity show for this window?", "What do the screenshots I added say?"]
         }
         switch focus {
@@ -375,7 +341,9 @@ public final class TimelineModel {
 
     public func loadTrail() {
         guard !busy else { return }
-        guard !demoMode else { loadDemo(); return }
+        #if DEBUG
+        if demoMode { loadDemo(); return }
+        #endif
         guard canReadHistory else { return }
         let token = generation
         busy = true
@@ -424,7 +392,10 @@ public final class TimelineModel {
         guard historyLoaded, !busy else { return }
         historyFocus = focus
         suggestedQuestions = questions(for: focus)
-        guard !demoMode, usingApple, let session = journey else { return }
+        #if DEBUG
+        if demoMode { return }
+        #endif
+        guard usingApple, let session = journey else { return }
         let token = generation
         busy = true
         operation = Task { @MainActor in
@@ -444,7 +415,9 @@ public final class TimelineModel {
 
     /// A private thread asks every time; the session-wide unlock is not enough for it.
     public func revealPrivateThread() async -> Bool {
+        #if DEBUG
         if demoMode { return true }
+        #endif
         return await authenticator.unlock(reason: "reveal a private thread", graceMinutes: 0) == .unlocked
     }
 
@@ -462,10 +435,9 @@ public final class TimelineModel {
         let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
         input = ""
-        if demoMode, canReadHistory {
-            turns.append(AskTurn(prompt: q, answer: "Fictional evidence only: the demo includes map links and travel-related pages. Those records do not establish a completed trip. No Safari history was read.", status: .answered, note: "Demo answer"))
-            return
-        }
+        #if DEBUG
+        if demoMode, canReadHistory { appendDemoAnswer(to: q); return }
+        #endif
         let turn = AskTurn(prompt: q, answer: "Preparing evidence…")
         turns.append(turn)
         activeAnswerID = turn.id
@@ -589,6 +561,16 @@ public final class TimelineModel {
             }
         }
     }
+
+    #if DEBUG
+    /// Development screenshots: open Ask with the first suggested question. Debug builds only.
+    public func openAskForScreenshots() {
+        start()
+        input = questions(for: historyFocus).first ?? ""
+        tab = .ask
+        ask()
+    }
+    #endif
 
     // MARK: Export
 

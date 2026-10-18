@@ -2,7 +2,7 @@
 
 **Your browser history knows where you live. Pastport helps you read it.**
 
-Pastport is a native macOS app and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. Safari analysis runs locally, behind Touch ID, with no cloud account or hosted database. Apple Foundation Models run on-device; local Ollama remains available for CLI phrasing. The separate Connected tools assistant can contact the services shown in each approval request.
+Pastport is a native macOS app, iPhone and iPad app, and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. Safari analysis runs locally, behind Touch ID, with no cloud account or hosted database. Apple Foundation Models run on-device; local Ollama remains available for CLI phrasing. The separate Connected tools assistant can contact the services shown in each approval request.
 
 ![Pastport Recent view](docs/pastport-recent.png)
 
@@ -18,6 +18,12 @@ The live history database is copied to a temporary location and queried read-onl
 - **Bookings** — booking-like pages, including confirmation and checkout URLs. A visit does not prove a purchase, reservation, or completed trip.
 - **Threads** — short bursts of related activity.
 - **Trackers** — redirects, interstitials, and attribution parameters.
+
+## iPhone and iPad
+
+iOS does not let apps read Safari history, and Pastport on iPhone and iPad says so on its Timeline. There it builds a timeline from what iOS allows: **photo activity** (the same local, read-only Photos reader; screenshots are counted, never inspected) and **screenshots you add** with the photo picker. A screenshot's text is read on the device and emails, one-time codes and card numbers are replaced before it is shown or used; the image itself is not kept.
+
+**Ask → Timeline** answers over that evidence with Apple Foundation Models and three read-only tools (`timeline_counts`, `photo_activity`, `added_screenshots`). Answers stream, can be stopped, list the tools they used, and are kept only when every number in them appears in the evidence. Without Apple Intelligence, Ask replies with the recorded facts and says why. **Connected tools** works as on the Mac. Leaving the app clears everything that was read, like screen lock on the Mac.
 
 ## Install
 
@@ -48,7 +54,7 @@ The implementation pins [FoundationModelsKit](https://github.com/rryam/Foundatio
 
 **Lock & clear** clears cached history, photo activity and answers in both the window and menu-bar panel. Screen lock does the same. Changing the date range clears old evidence before another read.
 
-The source installer creates an ad-hoc-signed local development build, not a notarized distribution. The safe demo mode never reads Safari history:
+The source installer creates an ad-hoc-signed local development build, not a notarized distribution. The safe demo mode uses fictional data, never reads Safari history, and exists only in Debug builds (`--demo` builds Debug):
 
 ```bash
 ./install.sh --demo
@@ -90,7 +96,10 @@ The script builds the native app, checks its version, creates DMG and ZIP artifa
 
 ```bash
 swift test
+xcodegen generate   # Pastport (macOS) and PastportiOS (iPhone, iPad) schemes
 ```
+
+`PastportKit` is the cross-platform core (detectors, sources as protocols, Foundation Models sessions, the `@Observable` `TimelineModel`). `PastportUI` holds the shared SwiftUI views. `PastportMac` holds the Mac-only adapters: the Safari reader (`/usr/bin/sqlite3` on a copied database), notifications, screen lock and Ollama.
 
 Detectors use synthetic visits and wire-format shape, not brand-name lists. Contributions should preserve that rule.
 

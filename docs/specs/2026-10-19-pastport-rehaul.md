@@ -123,6 +123,8 @@ Slices, one commit each:
    `HistorySource` and `Authenticating`; `SessionLock` and `Verticals` stop using
    `homeDirectoryForCurrentUser`. Check: `swift test` green with an executed count;
    `PastportKit` compiles for the iOS Simulator.
+   *As built, slices 3 and 4 swapped order: the timeline assistant (slice 3) landed before the
+   model and shared UI (slice 4), so the model could depend on it.*
 3. **Observable model + shared UI.** `TimelineModel` and `ConnectedAssistant` become
    `@Observable`; Ask gets turns with Stop and tools used; a screenshots section; AppKit stays
    in the Mac app (screen-lock observer, Quit; the save panel becomes `fileExporter`). Check:

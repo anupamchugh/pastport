@@ -20,6 +20,11 @@ struct PastportBarApp: App {
     init() {
         let model = Self.makeModel()
         _model = State(initialValue: model)
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        model.demoMode = arguments.contains("--demo") || ProcessInfo.processInfo.environment["PASTPORT_DEMO"] == "1"
+        if arguments.contains("--ask") { model.openAskForScreenshots() }
+        #endif
         // Screen lock clears cached history, photo activity and answers.
         ScreenLock.onLock { model.lockAndClear() }
     }
@@ -46,18 +51,7 @@ struct PastportBarApp: App {
             localModels: LocalModels(
                 list: { (try? await Ollama.listModels()) ?? [] },
                 generate: { model, prompt in try await Ollama.generate(model: model, prompt: prompt) }
-            ),
-            demoMode: launchedInDemoMode
+            )
         )
-    }
-
-    /// Fictional data for development screenshots. Debug builds only.
-    static var launchedInDemoMode: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("--demo")
-            || ProcessInfo.processInfo.environment["PASTPORT_DEMO"] == "1"
-        #else
-        false
-        #endif
     }
 }

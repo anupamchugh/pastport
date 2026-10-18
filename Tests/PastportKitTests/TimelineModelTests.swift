@@ -52,7 +52,8 @@ struct TimelineModelTests {
     @Test func lockClearsEvidenceAndAnswersAndCanReloadOnlyFictionalData() {
         let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
                                   timelineAnswerer: ScriptedAnswerer(updates: []),
-                                  appleIntelligenceReady: { false }, demoMode: true)
+                                  appleIntelligenceReady: { false })
+        model.demoMode = true
         model.start()
         #expect(!model.movements.isEmpty)
         model.readPhotos()
@@ -166,7 +167,8 @@ struct TimelineModelTests {
     @Test func changingWindowLocksAndClears() {
         let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
                                   timelineAnswerer: ScriptedAnswerer(updates: []),
-                                  appleIntelligenceReady: { false }, demoMode: true)
+                                  appleIntelligenceReady: { false })
+        model.demoMode = true
         model.start()
         #expect(model.historyLoaded)
         model.days = 30
