@@ -104,7 +104,13 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
     private static func classifyImage(_ data: Data) async throws -> [PhotoLabel] {
         guard #available(macOS 15, *) else { return [] }
         guard !Task.isCancelled else { throw CancellationError() }
+        #if compiler(>=6.4)
         let observations = try await ClassifyImageRequest().perform(on: data)
+        #else
+        let request = VNClassifyImageRequest()
+        try VNImageRequestHandler(data: data).perform([request])
+        let observations = request.results ?? []
+        #endif
         // Preserve the raw Vision observations here. Confidence filtering,
         // ordering, and capping belong solely to reduceLabels below so the
         // production and synthetic paths cannot drift.

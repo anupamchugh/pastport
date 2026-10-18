@@ -50,6 +50,7 @@ public struct ScreenshotReader: Sendable {
 
     public init() {
         self.recognize = { url in
+            #if compiler(>=6.4)
             if #available(macOS 15.0, *) {
                 var request = RecognizeTextRequest()
                 request.recognitionLevel = .accurate
@@ -58,6 +59,7 @@ public struct ScreenshotReader: Sendable {
                 return observations.compactMap { $0.topCandidates(1).first?.string }
             }
 
+            #endif
             return try await Task.detached {
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .accurate
