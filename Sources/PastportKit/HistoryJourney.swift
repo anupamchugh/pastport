@@ -211,6 +211,12 @@ struct JourneyEvidence: @unchecked Sendable {
 
     var travelBookings: [Booking] { bookings.filter(\.isTravel) }
 
+    var travelSpan: String {
+        let times = travelBookings.map(\.time)
+        guard let first = times.min(), let last = times.max() else { return "no retained travel-page signals" }
+        return "\(first.formatted(.iso8601.year().month().day())) through \(last.formatted(.iso8601.year().month().day()))"
+    }
+
     var evidenceLines: [String] {
         let categories = stats.categories.prefix(6).map { "\($0.name)=\($0.visits)" }.joined(separator: ", ")
         let topSites = stats.topHosts.prefix(6).map { "\($0.host)=\($0.visits)" }.joined(separator: ", ")
@@ -232,7 +238,7 @@ struct JourneyEvidence: @unchecked Sendable {
         }
         let travel = travelBookings
         if !travel.isEmpty && (focus == .travel || focus == .overview) {
-            lines.append("booking-like pages: \(travel.count) travel-related page signals; selected examples: " + travel.prefix(12).map { booking in
+            lines.append("booking-like pages: \(travel.count) travel-related page signals; full retained signal dates: \(travelSpan); selected examples (not the full date range): " + travel.prefix(12).map { booking in
                 "\(booking.headline) | \(booking.title.prefix(180)) | host \(booking.host)"
             }.joined(separator: " || "))
         }
@@ -267,7 +273,7 @@ struct JourneyEvidence: @unchecked Sendable {
             let travel = travelBookings
             guard !travel.isEmpty else { return "I found no travel-related booking-like page in this retained window." }
             let lines = travel.prefix(6).map { "\($0.headline) (\($0.title.isEmpty ? $0.host : $0.title))" }.joined(separator: "; ")
-            return "I found \(travel.count) travel-related page signal\(travel.count == 1 ? "" : "s"): \(lines). A history page is evidence that it was visited; it does not confirm a purchase, completed booking, or trip."
+            return "I found \(travel.count) travel-related page signal\(travel.count == 1 ? "" : "s") dated \(travelSpan). Selected examples: \(lines). A history page is evidence that it was visited; it does not confirm a purchase, completed booking, or trip."
         case .privacy:
             guard !movements.isEmpty || !trackers.isEmpty else { return "I found no deterministic location or redirect tracking signal in this retained window." }
             let tracking = trackers.isEmpty ? "" : " I also found \(trackers.count) redirect or tracking signal\(trackers.count == 1 ? "" : "s") in recorded URLs."
@@ -333,7 +339,7 @@ struct JourneyEvidence: @unchecked Sendable {
         if q.contains("overview") || q.contains("summarize all") || q.contains("overall pattern") { return .overview }
         if q.contains("privacy") || q.contains("track") || q.contains("leak") { return .privacy }
         if q.contains("where") || q.contains("place") || q.contains("location") { return .places }
-        if q.contains("book") || q.contains("flight") || q.contains("hotel") || q.contains("trip") { return .travel }
+        if q.contains("travel") || q.contains("book") || q.contains("flight") || q.contains("hotel") || q.contains("trip") { return .travel }
         if q.contains("research") || q.contains("search") || q.contains("thinking") { return .research }
         return .overview
     }
@@ -397,6 +403,13 @@ enum HistoryJourneyValidation {
             return false
         }
         let packet = evidenceLines.joined(separator: " ")
+        // Dates in selected examples cannot establish the span of all travel signals.
+        // Present the exact computed signal dates in source evidence instead.
+        if evidenceLines.contains(where: { $0.hasPrefix("booking-like pages:") }),
+           lower.range(of: #"\b(?:from|between|range|span|earliest|latest)\b"#, options: .regularExpression) != nil,
+           lower.rangeOfCharacter(from: .decimalDigits) != nil {
+            return false
+        }
         guard let regex = try? NSRegularExpression(pattern: #"(?<![\p{L}\d])\d+(?:,\d{3})*(?:\.\d+)?(?![\p{L}\d])"#) else { return false }
         func numbers(_ value: String) -> Set<String> {
             Set(regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).compactMap {
@@ -994,7 +1007,7 @@ private enum JourneyPrompts {
         let boundedQuestion = String(question.prefix(1_000))
         let availableLabels = evidence.evidenceLines.compactMap { $0.split(separator: ":", maxSplits: 1).first }.joined(separator: ", ")
         return """
-        Answer the question using the evidence packet. Return one to three short sections. Each section must first cite the available evidenceIDs, then give one or two factual sentences. Only cite labels that appear in the packet. Use exact counts, dates, hosts, and places only from the packet. A booking-like page proves only that a page was visited; never claim checkout, purchase, confirmation, or travel completion. If the packet is insufficient, say so. Do not repeat raw URLs unless needed.
+        Answer the question using the evidence packet. Return one to three short sections. Each section must first cite the available evidenceIDs, then give one or two factual sentences. Only cite labels that appear in the packet. Use exact counts, dates, hosts, and places only from the packet. A booking-like page proves only that a page was visited; never claim checkout, purchase, confirmation, or travel completion. If the packet is insufficient, say so. Selected examples do not establish the full travel date range; leave travel ranges to the computed source evidence. Do not repeat raw URLs unless needed.
         QUESTION: \(boundedQuestion)
         CURRENT FOCUS: \(evidence.focus.rawValue)
         AVAILABLE EVIDENCE LABELS: \(availableLabels)

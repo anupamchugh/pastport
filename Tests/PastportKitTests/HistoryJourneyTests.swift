@@ -48,6 +48,24 @@ struct HistoryJourneyTests {
         #expect(HistoryJourneyValidation.allowsNarrative("A history page does not confirm a purchase.", evidenceLines: packet))
     }
 
+    @Test("travel example dates cannot be promoted to the full signal range")
+    func travelExampleDatesAreNotTheFullRange() throws {
+        let first = try #require(ISO8601DateFormatter().date(from: "2026-02-19T12:00:00Z"))
+        let last = try #require(ISO8601DateFormatter().date(from: "2026-10-11T12:00:00Z"))
+        let visits = [
+            Visit(time: first, title: "Flight checkout", url: "https://air.example/checkout"),
+            Visit(time: last, title: "Hotel confirmation", url: "https://stay.example/booking/confirmation")
+        ]
+        let evidence = JourneyEvidence.make(visits: visits, question: "travel pages", focus: .travel)
+        #expect(evidence.travelSpan == "2026-02-19 through 2026-10-11")
+        let packet = ["booking-like pages: 13 signals; full retained signal dates: 2026-02-19 through 2026-10-11; examples Oct 11, 2026 and Jun 13, 2026"]
+        #expect(!HistoryJourneyValidation.allowsNarrative("13 travel-related page signals appear from Oct 11, 2026 to Jun 13, 2026.", evidenceLines: packet))
+        #expect(HistoryJourneyValidation.allowsNarrative("13 travel-related page signals were retained.", evidenceLines: packet))
+        #expect(evidence.deterministicAnswer.contains(evidence.travelSpan))
+        #expect(HistoryJourneyValidation.followUpFocus(for: "Travel pages?", previous: .research) == nil)
+        #expect(JourneyEvidence.inferredFocus(for: "Travel pages?", visits: []) == .travel)
+    }
+
     @Test("travel packets exclude unrelated confirmations and raw booking paths")
     func travelEvidenceMatchesExploreScope() {
         let visits = [
