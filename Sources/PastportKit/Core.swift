@@ -206,7 +206,7 @@ private func queryCopy(of db: URL, sql: String) throws -> [[String: Any]] {
     for sidecar in ["-wal", "-shm"] {
         let src = URL(filePath: db.path + sidecar)
         if fm.fileExists(atPath: src.path) {
-            try? fm.copyItem(at: src, to: URL(filePath: dest.path + sidecar))
+            try fm.copyItem(at: src, to: URL(filePath: dest.path + sidecar))
         }
     }
 
@@ -214,6 +214,80 @@ private func queryCopy(of db: URL, sql: String) throws -> [[String: Any]] {
     let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return [] }
     return (try JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+}
+
+/// Coverage is computed from the same copied databases as the returned rows.
+/// Nil days removes the date filter; the safety cap is always disclosed.
+public struct HistorySnapshot: Sendable {
+    public let visits: [Visit]
+    public let sourceCount: Int
+    public let sourceRows: Int
+    public let isComplete: Bool
+
+    public var scope: String {
+        let range: String
+        if let first = visits.last?.time, let last = visits.first?.time {
+            range = " · \(first.formatted(date: .abbreviated, time: .omitted)) – \(last.formatted(date: .abbreviated, time: .omitted))"
+        } else { range = "" }
+        return "\(visits.count) unique visits · \(sourceCount) Safari sources\(range) · "
+            + (isComplete ? "all matching retained rows read" : "PARTIAL: safety row cap reached")
+    }
+}
+
+public func fetchHistorySnapshot(days: Int?, limit: Int = 1_000_000) throws -> HistorySnapshot {
+    let fm = FileManager.default
+    let home = fm.homeDirectoryForCurrentUser
+    func exists(_ url: URL) throws -> Bool {
+        do { _ = try fm.attributesOfItem(atPath: url.path); return true }
+        catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile {
+            return false
+        }
+    }
+    var databases: [URL] = []
+    let legacy = home.appending(path: "Library/Safari/History.db")
+    if try exists(legacy) { databases.append(legacy) }
+    let profiles = home.appending(path: "Library/Containers/com.apple.Safari/Data/Library/Safari/Profiles")
+    if try exists(profiles) {
+        for folder in try fm.contentsOfDirectory(at: profiles, includingPropertiesForKeys: nil) {
+            let db = folder.appending(path: "History.db")
+            if try exists(db) { databases.append(db) }
+        }
+    }
+    return try fetchHistorySnapshot(databases: databases, days: days, limit: limit)
+}
+
+func fetchHistorySnapshot(databases: [URL], days: Int?, limit: Int) throws -> HistorySnapshot {
+    guard !databases.isEmpty else { throw CLIError.msg("No Safari History.db found for this user.") }
+    guard limit > 0 else { throw CLIError.msg("History limit must be positive.") }
+    let clause = days.map {
+        "WHERE v.visit_time > \(Date().addingTimeInterval(-Double(max(1, $0)) * 86400).timeIntervalSinceReferenceDate)"
+    } ?? ""
+    let sql = """
+    SELECT v.visit_time AS t, IFNULL(v.title, '') AS title, i.url AS url,
+    COUNT(*) OVER() AS available_count
+    FROM history_visits v JOIN history_items i ON i.id = v.history_item
+    \(clause) ORDER BY v.visit_time DESC LIMIT \(limit);
+    """
+    var visits: [Visit] = []
+    var sourceRows = 0
+    var complete = true
+    for db in databases {
+        // One failed source fails the read instead of silently declaring full coverage.
+        let rows = try queryCopy(of: db, sql: sql)
+        let available = (rows.first?["available_count"] as? NSNumber)?.intValue ?? 0
+        sourceRows += available
+        complete = complete && rows.count == available
+        visits += rows.map {
+            Visit(time: Date(timeIntervalSinceReferenceDate: ($0["t"] as? NSNumber)?.doubleValue ?? 0),
+                  title: $0["title"] as? String ?? "", url: $0["url"] as? String ?? "")
+        }
+    }
+    var seen = Set<String>()
+    let unique = visits.sorted { $0.time > $1.time }.filter {
+        seen.insert("\($0.time.timeIntervalSinceReferenceDate)|\($0.url)").inserted
+    }
+    return HistorySnapshot(visits: Array(unique.prefix(limit)), sourceCount: databases.count,
+                           sourceRows: sourceRows, isComplete: complete && unique.count <= limit)
 }
 
 /// Fetch visits across all databases within a day window, optionally keyword-filtered.

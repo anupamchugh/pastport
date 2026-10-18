@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Photos
 import PastportKit
+import UniformTypeIdentifiers
 
 @MainActor
 final class BarModel: ObservableObject {
@@ -30,6 +31,9 @@ final class BarModel: ObservableObject {
     @Published var log: [QA] = []
     @Published var input = ""
 
+    @Published var coverage = ""
+    @Published var profile = ""
+    @Published var lastAgentRun: HistoryAgent.Run?
     @Published var status = ""
     @Published var busy = false
     @Published var photoEvents: [PhotoEvent] = []
@@ -80,6 +84,7 @@ final class BarModel: ObservableObject {
         unlocked = false; busy = false
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; brief = ""; log = []; input = ""
+        coverage = ""; profile = ""; lastAgentRun = nil
         photoStatus = "Photos are closed. Read activity when you choose."
         status = "Locked. Cached history, photo activity and answers cleared."
         contentID = UUID()
@@ -98,7 +103,7 @@ final class BarModel: ObservableObject {
             return
         }
         let token = generation
-        let since = Date().addingTimeInterval(-Double(days) * 86400)
+        let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
         busy = true
         operation = Task { @MainActor in
             defer { if token == generation { busy = false } }
@@ -158,9 +163,13 @@ final class BarModel: ObservableObject {
         status = "Reading history…"
         let d = days
         do {
-            let result = try await Task.detached { try fetchVisits(days: d, keyword: nil, limit: 300_000, hosts: []) }.value
+            let start = ContinuousClock.now
+            let result = try await Task.detached { try fetchHistorySnapshot(days: d == 0 ? nil : d) }.value
             guard token == generation, !Task.isCancelled else { return nil }
-            return result
+            coverage = result.scope
+            let elapsed = start.duration(to: .now).components
+            profile = String(format: "History read: %.2f s", Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+            return result.visits
         }
         catch {
             guard token == generation else { return nil }
@@ -184,7 +193,7 @@ final class BarModel: ObservableObject {
             defer { if token == generation { busy = false } }
             brief = ""; movements = []; threads = []; travel = []; themes = []; visits = []
             guard let v = await unlockAndFetch(token: token) else { return }
-            guard !v.isEmpty else { status = "No visits in the last \(days) days."; return }
+            guard !v.isEmpty else { status = "No retained visits in this window."; return }
             visits = v
             // All three are pure functions over the rows, and each walks up to 300k of them.
             // Run them off the main actor together or the window freezes for the whole scan.
@@ -207,21 +216,25 @@ final class BarModel: ObservableObject {
             let prompt = Digest.prompt(
                 categorySummary: Digest.ranked(s.categories.map { ($0.name, $0.visits) }, label: "CATEGORIES"),
                 topSites: Digest.ranked(s.topHosts.map { ($0.host, $0.visits) }, label: "SITES"),
-                movements: moves, threads: intents, days: days, instruction: nil
+                movements: moves, threads: intents,
+                days: days == 0 ? max(1, Int(Date().timeIntervalSince(v.last?.time ?? .now) / 86400) + 1) : days,
+                instruction: "Scope: \(coverage). This covers retained history only, not a lifetime record. Never infer sensitive traits from browsing."
             )
             guard !model.isEmpty else {
                 status = "History ready. No local model is available; evidence cards work without one."
                 return
             }
-            status = "Reading your last \(days) days on-device with \(model)…"
+            status = "Summarizing the selected history on-device with \(model)…"
             let apple = usingApple, m = model
             do {
                 let generated = try await Task.detached {
-                    apple ? try await AppleFoundation.generate(prompt: prompt)
-                          : try await Ollama.generate(model: m, prompt: prompt)
+                    apple ? try await AppleFoundation.run(prompt: prompt)
+                          : try await Ollama.run(model: m, prompt: prompt)
                 }.value
                 guard token == generation, !Task.isCancelled else { return }
-                brief = generated; status = "History ready · facts computed locally"
+                brief = generated.text
+                profile += String(format: " · Summary: %.2f s", generated.totalSeconds)
+                status = "History ready · facts computed locally"
             } catch {
                 guard token == generation else { return }
                 status = "History ready. The local model could not finish; evidence cards are still available."
@@ -248,7 +261,10 @@ final class BarModel: ObservableObject {
             do {
                 let reply: String
                 if apple, AppleFoundation.isAvailable {
-                    reply = try await HistoryAgent.ask(question: q, visits: v)
+                    let run = try await HistoryAgent.run(question: q, visits: v)
+                    guard token == generation, !Task.isCancelled else { return }
+                    lastAgentRun = run; profile = run.profile
+                    reply = run.answer
                 } else {
                     let s = Stats.compute(from: v)
                     let sites = s.topHosts.prefix(15).map { "\($0.host)(\($0.visits))" }.joined(separator: ", ")
@@ -264,6 +280,23 @@ final class BarModel: ObservableObject {
             }
         }
     }
+
+    func exportExperiment() {
+        guard !busy, !visits.isEmpty else { return }
+        let token = generation
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "Pastport-experiment.json"
+        panel.message = "Export category counts and date coverage to Foundation Lab. No URLs, titles, searches, locations or answers are included. This file remains after Lock & clear."
+        guard panel.runModal() == .OK, let url = panel.url, token == generation, canExport else { return }
+        do {
+            let data = try HistoryAgent.labExperiment(visits: visits, scope: coverage)
+            try data.write(to: url, options: .atomic)
+            status = "Experiment exported. In Foundation Lab, import this JSON in Playground."
+        } catch { status = "Experiment export failed: \(error.localizedDescription)" }
+    }
+
+    var canExport: Bool { !busy && !visits.isEmpty }
 
     private func coord(_ v: Double) -> String { String(format: "%.5f", v) }
 }
@@ -301,6 +334,7 @@ struct BarView: View {
                 Picker("Window", selection: $m.days) {
                     Text("7 days").tag(7); Text("30 days").tag(30)
                     Text("90 days").tag(90); Text("1 year").tag(365)
+                    Text("All retained history").tag(0)
                 }.onChange(of: m.days) {
                     m.lockAndClear()
                     m.status = "Window changed. Read history or photo activity for the selected range."
@@ -326,6 +360,14 @@ struct BarView: View {
             .pickerStyle(.segmented).labelsHidden()
             .padding(.horizontal, 14).padding(.vertical, 10)
 
+            if !m.coverage.isEmpty {
+                Text(m.coverage).font(.caption2).foregroundStyle(.secondary)
+                    .textSelection(.enabled).padding(.horizontal, 14).padding(.bottom, 4)
+            }
+            if !m.profile.isEmpty {
+                Text(m.profile).font(.caption2).foregroundStyle(.secondary)
+                    .textSelection(.enabled).padding(.horizontal, 14).padding(.bottom, 4)
+            }
             if !m.status.isEmpty {
                 HStack(spacing: 6) {
                     if m.busy { ProgressView().controlSize(.small) }
@@ -458,6 +500,8 @@ struct BarView: View {
         HStack {
             Button("Lock & clear", systemImage: "lock.fill") { m.lockAndClear() }
                 .controlSize(.small)
+            Button("Export to Foundation Lab") { m.exportExperiment() }
+                .controlSize(.small).disabled(!m.canExport)
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }.controlSize(.small)
         }.padding(.horizontal, 14).padding(.vertical, 8)
