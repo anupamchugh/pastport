@@ -16,7 +16,7 @@ public struct PhotoRecord {
 
 /// A burst of photo activity — the photo-side sibling of a history thread. Counts and
 /// scene labels are aggregated deterministically; nothing here touches a model.
-public struct PhotoEvent {
+public struct PhotoEvent: Sendable, Equatable {
     public let start: Date
     public let end: Date
     public let photoCount: Int

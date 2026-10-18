@@ -1,0 +1,267 @@
+import Foundation
+
+/// A screenshot the person chose to add. Only scrubbed OCR text is kept.
+public struct AddedScreenshot: Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public let name: String
+    public let addedAt: Date
+    public let evidence: ScreenshotEvidence
+
+    public init(id: UUID = UUID(), name: String, addedAt: Date = Date(), evidence: ScreenshotEvidence) {
+        self.id = id
+        self.name = name
+        self.addedAt = addedAt
+        self.evidence = evidence
+    }
+}
+
+/// The deterministic facts the timeline assistant may see. Built in code, never by the model.
+public struct TimelineEvidence: Sendable, Equatable {
+    public var window: String
+    public var photoEvents: [PhotoEvent]
+    public var screenshots: [AddedScreenshot]
+    /// False on iPhone and iPad: iOS does not let apps read Safari history.
+    public var historyAvailable: Bool
+
+    public init(window: String, photoEvents: [PhotoEvent], screenshots: [AddedScreenshot], historyAvailable: Bool) {
+        self.window = window
+        self.photoEvents = photoEvents
+        self.screenshots = screenshots
+        self.historyAvailable = historyAvailable
+    }
+
+    public var isEmpty: Bool { photoEvents.isEmpty && screenshots.isEmpty }
+
+    public var countsLine: String {
+        let photos = photoEvents.reduce(0) { $0 + $1.photoCount }
+        let shots = photoEvents.reduce(0) { $0 + $1.screenshotCount }
+        let history = historyAvailable ? "read separately" : "not readable on this device"
+        return "counts: window \(window); \(photoEvents.count) photo events; \(photos) photos; "
+            + "\(shots) screenshots counted in Photos; \(screenshots.count) screenshots added; Safari history \(history)"
+    }
+
+    public var photoLines: [String] {
+        guard !photoEvents.isEmpty else { return ["photo activity: none read"] }
+        return photoEvents.prefix(8).map { event in
+            let start = event.start.formatted(date: .abbreviated, time: .omitted)
+            let end = event.end.formatted(date: .abbreviated, time: .omitted)
+            let labels = event.labels.isEmpty ? "none" : event.labels.prefix(5).joined(separator: ", ")
+            return "photo activity: \(start == end ? start : start + " to " + end): "
+                + "\(event.photoCount) photos, \(event.screenshotCount) screenshots; scene labels: \(labels)"
+        }
+    }
+
+    /// Screenshot text reaches a model only because the person added that screenshot here.
+    public var screenshotLines: [String] {
+        guard !screenshots.isEmpty else { return ["added screenshots: none"] }
+        return screenshots.enumerated().map { index, shot in
+            let text = shot.evidence.scrubbedLines.joined(separator: " / ")
+            return "added screenshots: #\(index + 1) \(shot.evidence.kind.rawValue), "
+                + "\(shot.evidence.redactionCount) redactions: " + String(text.prefix(600))
+        }
+    }
+
+    public var lines: [String] { [countsLine] + photoLines + screenshotLines }
+
+    /// The answer when no model runs. Every number comes from the lines above.
+    public var deterministicSummary: String {
+        if isEmpty {
+            return "Nothing has been read yet. Read photo activity or add a screenshot, then ask again."
+                + (historyAvailable ? "" : " Safari history is not readable on this device.")
+        }
+        var parts: [String] = []
+        if !photoEvents.isEmpty {
+            let photos = photoEvents.reduce(0) { $0 + $1.photoCount }
+            let shots = photoEvents.reduce(0) { $0 + $1.screenshotCount }
+            parts.append("Photos show \(photoEvents.count) activity burst\(photoEvents.count == 1 ? "" : "s") with \(photos) photo\(photos == 1 ? "" : "s") and \(shots) screenshot\(shots == 1 ? "" : "s") counted.")
+        }
+        if !screenshots.isEmpty {
+            let kinds = screenshots.map(\.evidence.kind.rawValue).joined(separator: ", ")
+            parts.append("You added \(screenshots.count) screenshot\(screenshots.count == 1 ? "" : "s") (\(kinds)); their text was scrubbed before use.")
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
+/// One update of a streamed answer. Each value replaces the previous one.
+public struct TimelineAnswerProgress: Sendable, Equatable {
+    public enum Source: Sendable, Equatable {
+        case model
+        /// Code wrote this answer; `reason` says why the model did not.
+        case facts(reason: String)
+    }
+
+    public let text: String
+    public let toolsUsed: [String]
+    public let source: Source
+
+    public init(text: String, toolsUsed: [String] = [], source: Source) {
+        self.text = text
+        self.toolsUsed = toolsUsed
+        self.source = source
+    }
+}
+
+/// The seam between the timeline and a language model. Tests use a fake.
+public protocol TimelineAnswering: Sendable {
+    func answer(_ question: String, evidence: TimelineEvidence) -> AsyncThrowingStream<TimelineAnswerProgress, any Error>
+}
+
+/// Code-side checks shared by every timeline answer.
+public enum TimelineAnswerPolicy {
+    /// Text the model wrote may be shown only when every number in it appears in the evidence.
+    public static func allows(_ text: String, evidence: TimelineEvidence) -> Bool {
+        HistoryJourneyValidation.allowsNarrative(text, evidenceLines: evidence.lines)
+    }
+
+    static let instructions = """
+    You answer questions about the person's own recent timeline on this device.
+    Use the tools to read the facts. Use only numbers and dates that a tool returned.
+    A screenshot of a booking or receipt does not prove a trip or a payment happened.
+    If the facts do not answer the question, say you don't know. Two or three short sentences.
+    """
+}
+
+#if canImport(FoundationModels)
+import FoundationModels
+
+/// Apple's on-device model with three read-only tools over the in-memory evidence.
+@available(macOS 26, iOS 26, *)
+public struct FoundationTimelineAnswerer: TimelineAnswering {
+    public init() {}
+
+    public func answer(_ question: String, evidence: TimelineEvidence) -> AsyncThrowingStream<TimelineAnswerProgress, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let availability = SystemLanguageModel.default.availability
+                guard case .available = availability else {
+                    continuation.yield(TimelineAnswerProgress(
+                        text: evidence.deterministicSummary,
+                        source: .facts(reason: Self.reason(for: availability))
+                    ))
+                    continuation.finish()
+                    return
+                }
+                let log = TimelineToolLog()
+                let session = LanguageModelSession(
+                    tools: [
+                        TimelineCountsTool(evidence: evidence, log: log),
+                        PhotoActivityTool(evidence: evidence, log: log),
+                        AddedScreenshotsTool(evidence: evidence, log: log),
+                    ],
+                    instructions: TimelineAnswerPolicy.instructions
+                )
+                var last = ""
+                do {
+                    for try await snapshot in session.streamResponse(to: question, generating: TimelineAnswerPayload.self) {
+                        try Task.checkCancellation()
+                        guard let text = snapshot.content.answer, text != last,
+                              TimelineAnswerPolicy.allows(text, evidence: evidence) else { continue }
+                        last = text
+                        continuation.yield(TimelineAnswerProgress(text: text, toolsUsed: log.names, source: .model))
+                    }
+                    if last.isEmpty {
+                        continuation.yield(TimelineAnswerProgress(
+                            text: evidence.deterministicSummary, toolsUsed: log.names,
+                            source: .facts(reason: "The model's answer did not match the recorded facts.")
+                        ))
+                    }
+                    continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish(throwing: CancellationError())
+                } catch {
+                    continuation.yield(TimelineAnswerProgress(
+                        text: evidence.deterministicSummary, toolsUsed: log.names,
+                        source: .facts(reason: "Apple Intelligence could not finish this answer.")
+                    ))
+                    continuation.finish()
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    static func reason(for availability: SystemLanguageModel.Availability) -> String {
+        switch availability {
+        case .available:
+            return ""
+        case .unavailable(.appleIntelligenceNotEnabled):
+            return "Apple Intelligence is turned off in Settings."
+        case .unavailable(.modelNotReady):
+            return "Apple Intelligence is still downloading."
+        case .unavailable(.deviceNotEligible):
+            return "This device does not support Apple Intelligence."
+        case .unavailable:
+            return "Apple Intelligence is unavailable."
+        }
+    }
+}
+
+@available(macOS 26, iOS 26, *)
+@Generable
+struct TimelineAnswerPayload {
+    @Guide(description: "Two or three short sentences using only facts returned by the tools.")
+    var answer: String
+}
+
+/// Which tools ran during one answer, in order, without repeats.
+final class TimelineToolLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    func record(_ name: String) {
+        lock.lock(); defer { lock.unlock() }
+        if !recorded.contains(name) { recorded.append(name) }
+    }
+
+    var names: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return recorded
+    }
+}
+
+@available(macOS 26, iOS 26, *)
+struct TimelineCountsTool: Tool {
+    let name = "timeline_counts"
+    let description = "Counts for the person's timeline: photo events, photos, screenshots, and whether Safari history is readable here."
+    let evidence: TimelineEvidence
+    let log: TimelineToolLog
+
+    @Generable struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        log.record(name)
+        return evidence.countsLine
+    }
+}
+
+@available(macOS 26, iOS 26, *)
+struct PhotoActivityTool: Tool {
+    let name = "photo_activity"
+    let description = "Photo activity bursts with dates, photo and screenshot counts, and on-device scene labels."
+    let evidence: TimelineEvidence
+    let log: TimelineToolLog
+
+    @Generable struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        log.record(name)
+        return evidence.photoLines.joined(separator: "\n")
+    }
+}
+
+@available(macOS 26, iOS 26, *)
+struct AddedScreenshotsTool: Tool {
+    let name = "added_screenshots"
+    let description = "Scrubbed text of screenshots the person added, such as bookings or receipts. Emails, codes and card numbers are already redacted."
+    let evidence: TimelineEvidence
+    let log: TimelineToolLog
+
+    @Generable struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        log.record(name)
+        return evidence.screenshotLines.joined(separator: "\n")
+    }
+}
+#endif

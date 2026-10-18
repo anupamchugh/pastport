@@ -10,6 +10,15 @@ public enum ScreenshotKind: String, Equatable, Sendable {
     case unknown
 
     /// Sensitive screenshot kinds require an explicit caller opt-in for narration.
+    public var title: String {
+        switch self {
+        case .chat: "Chat"
+        case .banking: "Banking"
+        case .receipt: "Receipt"
+        case .unknown: "Other"
+        }
+    }
+
     public var requiresNarrationOptIn: Bool {
         switch self {
         case .chat, .banking, .receipt, .unknown: return true
@@ -22,8 +31,11 @@ public enum ScreenshotKind: String, Equatable, Sendable {
 /// Raw recognized text is deliberately not representable by this type.
 public struct ScreenshotEvidence: Equatable, Sendable {
     let lines: [String]
-    let redactionCount: Int
+    public let redactionCount: Int
     public let kind: ScreenshotKind
+
+    /// Recognized text after emails, one-time codes and card numbers were replaced.
+    public var scrubbedLines: [String] { lines }
 
     var text: String { lines.joined(separator: "\n") }
 
@@ -76,6 +88,14 @@ public struct ScreenshotReader: Sendable {
 
     public func read(imageAt url: URL) async throws -> ScreenshotEvidence {
         ScreenshotScrubber.scrub(try await recognize(url))
+    }
+
+    /// Reads picked image data through a short-lived private file that is removed after OCR.
+    public func read(imageData: Data) async throws -> ScreenshotEvidence {
+        let url = FileManager.default.temporaryDirectory.appending(path: "pastport-shot-\(UUID().uuidString)")
+        try imageData.write(to: url, options: [.atomic, .completeFileProtection])
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try await read(imageAt: url)
     }
 
     /// Read, gate, and then hand only scrubbed text to a model-facing callback.
