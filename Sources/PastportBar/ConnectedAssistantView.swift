@@ -118,6 +118,8 @@ public struct ConnectedAssistantView: View {
                 }
             }
         }
+        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.topLeading, for: .alignment)
         .frame(minHeight: 150, maxHeight: 360)
     }
 

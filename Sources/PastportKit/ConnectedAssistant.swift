@@ -457,10 +457,13 @@ public final class ConnectedAssistant: ObservableObject {
             } catch is CancellationError {
             } catch {
                 guard self.generation == token else { return }
+                let denied = self.toolReceipts.last?.status == .denied
                 if let index = self.messages.lastIndex(where: { $0.role == .assistant }) {
-                    self.messages[index].text = "The connected-tools request could not finish: \(error.localizedDescription)"
+                    self.messages[index].text = denied
+                        ? "That tool request was denied. No service call was made."
+                        : "The request could not finish. Check service access or choose another tool, then try again."
                 }
-                self.status = "Connected-tools request failed; no result was invented."
+                self.status = denied ? "Tool request denied." : "Connected-tools request failed; no result was invented."
             }
         }
     }
