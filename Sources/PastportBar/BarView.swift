@@ -7,15 +7,27 @@ import UniformTypeIdentifiers
 @MainActor
 final class BarModel: ObservableObject {
     enum Tab: String, CaseIterable, Identifiable {
-        case trail = "Recent"
+        case trail = "Explore"
         case ask = "Ask"
         var id: String { rawValue }
     }
 
-    struct QA: Identifiable { let id = UUID(); let role: String; let text: String }
+    struct QA: Identifiable { let id = UUID(); let role: String; var text: String }
 
     @Published var tab: Tab = .trail
     @Published var days = 90
+    enum AssistantSource: String, CaseIterable { case history = "History"; case connected = "Connected tools" }
+    @Published var assistantSource: AssistantSource = .history
+    @Published var historyFocus: HistoryFocus = .overview
+    @Published var recommendedFocuses: [HistoryFocus] = [.overview]
+    @Published var suggestedQuestions: [String] = []
+    @Published var sites: [HostStat] = []
+    @Published var trackerSignals: [TrackerHit] = []
+    @Published var historyLoaded = false
+    @Published var journeyReceipt: JourneyReceipt?
+    let connectedAssistant = ConnectedAssistant()
+    private var journey: HistoryJourney?
+    private var activeAnswerID: UUID?
 
     @Published var models: [String] = []
     @Published var model = ""            // selected — defaults to Apple Intelligence
@@ -84,7 +96,13 @@ final class BarModel: ObservableObject {
         unlocked = false; busy = false
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; brief = ""; log = []; input = ""
-        coverage = ""; profile = ""; lastAgentRun = nil
+        coverage = ""; profile = ""; lastAgentRun = nil; journeyReceipt = nil
+        sites = []; trackerSignals = []; historyLoaded = false
+        historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
+        let oldJourney = journey; journey = nil
+        activeAnswerID = nil
+        Task { await oldJourney?.clear() }
+        connectedAssistant.clear()
         photoStatus = "Photos are closed. Read activity when you choose."
         status = "Locked. Cached history, photo activity and answers cleared."
         contentID = UUID()
@@ -141,6 +159,11 @@ final class BarModel: ObservableObject {
         threads = Threads.scan(from: v, limit: 6)
         travel = Bookings.scan(from: v).filter(\.isTravel)
         themes = s.categories.prefix(6).map { (name: $0.name, visits: $0.visits) }
+        sites = s.topHosts
+        trackerSignals = Trackers.scan(from: v)
+        historyLoaded = true
+        recommendedFocuses = availableFocuses
+        suggestedQuestions = questions(for: .overview)
         brief = ""
         status = "Demo data · no history read"
     }
@@ -181,74 +204,120 @@ final class BarModel: ObservableObject {
         }
     }
 
+    var availableFocuses: [HistoryFocus] {
+        var result: [HistoryFocus] = [.overview]
+        if !threads.isEmpty { result.append(.research) }
+        if !travel.isEmpty { result.append(.travel) }
+        if !trackerSignals.isEmpty || !movements.isEmpty { result.append(.privacy) }
+        if !movements.isEmpty { result.append(.places) }
+        return result
+    }
+
+    var focusChoices: [HistoryFocus] {
+        var seen = Set<HistoryFocus>()
+        return (recommendedFocuses + availableFocuses).filter {
+            availableFocuses.contains($0) && seen.insert($0).inserted
+        }
+    }
+
+    func focusDetail(_ focus: HistoryFocus) -> String {
+        switch focus {
+        case .overview: return "Sites and categories · exact visit counts"
+        case .research: return "\(threads.count) selected search threads"
+        case .travel: return "\(travel.count) travel-related page signals"
+        case .privacy: return "\(trackerSignals.count) tracking patterns"
+        case .places: return "\(movements.count) map links · source evidence"
+        }
+    }
+
+    func questions(for focus: HistoryFocus) -> [String] {
+        switch focus {
+        case .overview: return ["Which sites appear most in this retained window?", "What were my recurring research topics?"]
+        case .research: return ["Show my repeated search topics and their source queries.", "Narrow this to the last 30 days."]
+        case .travel: return ["Which travel-related pages appear, and when?", "Separate checkout visits from confirmation-page signals."]
+        case .privacy: return ["Which tracking parameters and redirect patterns were recorded?", "What does this evidence prove, and what remains unknown?"]
+        case .places: return ["Which map links contain a named place, and when?", "What do these links show without assuming I visited?"]
+        }
+    }
+
     func loadTrail() {
         guard !busy else { return }
-        guard !demoMode else {
-            loadDemo()
-            return
-        }
+        guard !demoMode else { loadDemo(); return }
         let token = generation
         busy = true
         operation = Task { @MainActor in
             defer { if token == generation { busy = false } }
             brief = ""; movements = []; threads = []; travel = []; themes = []; visits = []
+            sites = []; trackerSignals = []; historyLoaded = false; log = []; journeyReceipt = nil
+            let oldJourney = journey; journey = nil
+            await oldJourney?.clear()
             guard let v = await unlockAndFetch(token: token) else { return }
-            guard !v.isEmpty else { status = "No retained visits in this window."; return }
             visits = v
-            // All three are pure functions over the rows, and each walks up to 300k of them.
-            // Run them off the main actor together or the window freezes for the whole scan.
             let scanned = await Task.detached {
-                (stats: Stats.compute(from: v),
+                (stats: Stats.compute(from: v, topHostLimit: 15),
                  leaks: Movements.scan(from: v),
-                 intents: Threads.scan(from: v, limit: 6),
-                 booked: Bookings.scan(from: v).filter(\.isTravel))
+                 intents: Threads.scan(from: v, limit: 12),
+                 booked: Bookings.scan(from: v).filter(\.isTravel),
+                 trackers: Trackers.scan(from: v))
             }.value
             guard token == generation, !Task.isCancelled else { return }
-            let s = scanned.stats
-            movements = scanned.leaks
-            threads = scanned.intents
-            travel = scanned.booked
-            themes = s.categories.prefix(6).map { (name: $0.name, visits: $0.visits) }
-            let moves = movements.map {
-                "\($0.headline) → \(coord($0.lat)),\(coord($0.lng)) [\($0.mapProvider)]"
-            }
-            let intents = threads.map(\.digestLine)
-            let prompt = Digest.prompt(
-                categorySummary: Digest.ranked(s.categories.map { ($0.name, $0.visits) }, label: "CATEGORIES"),
-                topSites: Digest.ranked(s.topHosts.map { ($0.host, $0.visits) }, label: "SITES"),
-                movements: moves, threads: intents,
-                days: days == 0 ? max(1, Int(Date().timeIntervalSince(v.last?.time ?? .now) / 86400) + 1) : days,
-                instruction: "Scope: \(coverage). This covers retained history only, not a lifetime record. Never infer sensitive traits from browsing."
-            )
-            guard !model.isEmpty else {
-                status = "History ready. No local model is available; evidence cards work without one."
-                return
-            }
-            status = "Summarizing the selected history on-device with \(model)…"
-            let apple = usingApple, m = model
+            movements = scanned.leaks; threads = scanned.intents; travel = scanned.booked
+            sites = scanned.stats.topHosts; trackerSignals = scanned.trackers
+            themes = scanned.stats.categories.map { (name: $0.name, visits: $0.visits) }
+            historyLoaded = true; historyFocus = .overview
+            recommendedFocuses = availableFocuses; suggestedQuestions = questions(for: .overview)
+            guard !v.isEmpty else { status = "No retained visits in this window."; return }
+            status = "Evidence ready. Choose a trail to explore."
+            let session = HistoryJourney(visits: v, scope: coverage)
+            journey = session
+            guard usingApple else { return }
             do {
-                let generated = try await Task.detached {
-                    apple ? try await AppleFoundation.run(prompt: prompt)
-                          : try await Ollama.run(model: m, prompt: prompt)
-                }.value
+                let result = try await session.recommend("Suggest useful evidence trails to revisit. Prioritize concrete research, travel-related pages and tracking patterns.")
                 guard token == generation, !Task.isCancelled else { return }
-                brief = generated.text
-                profile += String(format: " · Summary: %.2f s", generated.totalSeconds)
-                status = "History ready · facts computed locally"
+                recommendedFocuses = result.focuses.filter { availableFocuses.contains($0) }
+                if recommendedFocuses.isEmpty { recommendedFocuses = availableFocuses }
+                suggestedQuestions = result.suggestedQuestions.isEmpty ? questions(for: .overview) : result.suggestedQuestions
+                journeyReceipt = result.receipt; profile = result.receipt.details
+                status = "Evidence ready. Choose a trail, then refine it."
             } catch {
                 guard token == generation else { return }
-                status = "History ready. The local model could not finish; evidence cards are still available."
+                status = "Evidence ready. Apple Intelligence could not suggest trails; you can still explore the records."
             }
         }
+    }
+
+    func selectFocus(_ focus: HistoryFocus) {
+        guard historyLoaded, !busy else { return }
+        historyFocus = focus
+        suggestedQuestions = questions(for: focus)
+        guard !demoMode, usingApple, let session = journey else { return }
+        let token = generation
+        busy = true
+        operation = Task { @MainActor in
+            defer { if token == generation { busy = false } }
+            do {
+                let result = try await session.recommend("Explore this selected trail and suggest useful follow-up questions.", focus: focus)
+                guard token == generation, !Task.isCancelled else { return }
+                suggestedQuestions = result.suggestedQuestions.isEmpty ? questions(for: focus) : result.suggestedQuestions
+                journeyReceipt = result.receipt; profile = result.receipt.details
+                status = "\(focus.title) evidence ready."
+            } catch {
+                guard token == generation else { return }
+                status = "\(focus.title) evidence ready. Suggestions could not be generated."
+            }
+        }
+    }
+
+    func askSuggested(_ question: String) {
+        assistantSource = .history; tab = .ask; input = question; ask()
     }
 
     func ask() {
         let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy, !model.isEmpty else { return }
-        input = ""
-        log.append(QA(role: "user", text: q))
+        input = ""; log.append(QA(role: "user", text: q))
         if demoMode {
-            log.append(QA(role: "assistant", text: "Demo mode only uses fictional rows. I found a demo Airbnb movement in Paris and two demo travel commitments; no Safari history was read."))
+            log.append(QA(role: "assistant", text: "Fictional evidence only: the demo includes map links and travel-related pages. Those records do not establish a completed trip. No Safari history was read."))
             return
         }
         let token = generation
@@ -257,26 +326,40 @@ final class BarModel: ObservableObject {
             defer { if token == generation { busy = false } }
             if visits.isEmpty { guard let v = await unlockAndFetch(token: token) else { return }; visits = v }
             guard !visits.isEmpty else { status = "No history in this window to answer from."; return }
-            let v = visits, apple = usingApple, m = model
+            let pending = QA(role: "assistant", text: "Preparing evidence…")
+            log.append(pending)
+            activeAnswerID = pending.id
             do {
                 let reply: String
-                if apple, AppleFoundation.isAvailable {
-                    let run = try await HistoryAgent.run(question: q, visits: v)
+                if usingApple {
+                    let session: HistoryJourney
+                    if let existing = journey { session = existing }
+                    else {
+                        session = HistoryJourney(visits: visits, scope: coverage)
+                        journey = session
+                    }
+                    let result = try await session.answer(q, focus: historyFocus == .overview ? nil : historyFocus) { [weak model = self] partial in
+                        guard let model, token == model.generation, model.activeAnswerID == pending.id,
+                              let index = model.log.firstIndex(where: { $0.id == pending.id }) else { return }
+                        model.log[index].text = partial
+                    }
                     guard token == generation, !Task.isCancelled else { return }
-                    lastAgentRun = run; profile = run.profile
-                    reply = run.answer
+                    journeyReceipt = result.receipt; profile = result.receipt.details
+                    reply = result.text
                 } else {
-                    let s = Stats.compute(from: v)
-                    let sites = s.topHosts.prefix(15).map { "\($0.host)(\($0.visits))" }.joined(separator: ", ")
-                    let categories = s.categories.map { "\($0.name):\($0.visits)" }.joined(separator: ", ")
-                    let ctx = "Answer only from this person's Safari history. Top sites: \(sites). Categories: \(categories)."
-                    reply = try await Ollama.generate(model: m, prompt: ctx + "\n\nQ: \(q)\nA:")
+                    let evidence = AskWorkflow.evidence(for: AskWorkflow.intent(for: q), visits: visits)
+                    reply = try await Ollama.generate(model: model, prompt: "Use only these retained-history facts. A checkout page is not a completed purchase. Do not change counts.\n" + evidence + "\nQuestion: " + q)
                 }
-                guard token == generation, !Task.isCancelled else { return }
-                log.append(QA(role: "assistant", text: reply))
+                guard token == generation, !Task.isCancelled,
+                      let index = log.firstIndex(where: { $0.id == pending.id }) else { return }
+                activeAnswerID = nil
+                log[index].text = reply
+                status = "Answer ready · source evidence retained for follow-up"
             } catch {
-                guard token == generation else { return }
-                log.append(QA(role: "assistant", text: "The local model could not answer. Your history evidence remains available in Recent."))
+                guard token == generation, let index = log.firstIndex(where: { $0.id == pending.id }) else { return }
+                activeAnswerID = nil
+                log[index].text = "Apple Intelligence could not finish this answer. The source evidence is still available in Explore."
+                status = "Answer could not finish: \(error.localizedDescription)"
             }
         }
     }
@@ -365,8 +448,10 @@ struct BarView: View {
                     .textSelection(.enabled).padding(.horizontal, 14).padding(.bottom, 4)
             }
             if !m.profile.isEmpty {
-                Text(m.profile).font(.caption2).foregroundStyle(.secondary)
-                    .textSelection(.enabled).padding(.horizontal, 14).padding(.bottom, 4)
+                DisclosureGroup("Session details") {
+                    Text(m.profile).font(.caption2).foregroundStyle(.secondary)
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                }.font(.caption2).padding(.horizontal, 14).padding(.bottom, 4)
             }
             if !m.status.isEmpty {
                 HStack(spacing: 6) {
@@ -387,96 +472,117 @@ struct BarView: View {
 
     private var trail: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                // Order is the argument. What the person is least likely to know goes first,
-                // and it's the part no model touched — a deterministic headline can't be
-                // wrong. The model's prose is the least trustworthy thing on screen, so it
-                // goes last and starts collapsed.
+            VStack(alignment: .leading, spacing: 14) {
+                if !m.historyLoaded {
+                    Text("Find a trail worth revisiting").font(.title3.weight(.semibold))
+                    Text("Read your retained Safari history, choose a topic, and inspect the pages behind it.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Button("Read history") { m.loadTrail() }.buttonStyle(.borderedProminent).disabled(m.busy)
+                } else {
+                    HStack {
+                        Text("Explore your evidence").font(.title3.weight(.semibold))
+                        Spacer()
+                        Button("Refresh") { m.loadTrail() }.controlSize(.small).disabled(m.busy)
+                    }
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 8) {
+                        ForEach(m.focusChoices) { focus in
+                            Button { m.selectFocus(focus) } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(focus.title).font(.callout.weight(.semibold))
+                                    Text(m.focusDetail(focus)).font(.caption).foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }.frame(maxWidth: .infinity, minHeight: 54, alignment: .leading).padding(5)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(m.historyFocus == focus ? .accentColor : .secondary)
+                            .disabled(m.busy)
+                        }
+                    }
+                    selectedEvidence
+                    if !m.suggestedQuestions.isEmpty {
+                        Divider()
+                        Text("Continue this trail").font(.callout.weight(.semibold))
+                        ForEach(m.suggestedQuestions.prefix(3), id: \.self) { question in
+                            Button { m.askSuggested(question) } label: {
+                                Label(question, systemImage: "arrow.turn.down.right")
+                                    .font(.caption).multilineTextAlignment(.leading)
+                            }.buttonStyle(.plain).foregroundStyle(.tint).disabled(m.busy)
+                        }
+                    }
+                }
+                Divider()
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(m.photoStatus).font(.caption).foregroundStyle(.secondary)
-                        Text("Read-only, on this Mac. No iCloud downloads. Screenshot pixels are excluded.")
+                        Text("Local images only. No iCloud downloads. Screenshot pixels are excluded.")
                             .font(.caption2).foregroundStyle(.secondary)
                         ForEach(Array(m.photoEvents.enumerated()), id: \.offset) { _, event in
                             VStack(alignment: .leading, spacing: 3) {
-                                let start = event.start.formatted(date: .abbreviated, time: .omitted)
-                                let end = event.end.formatted(date: .abbreviated, time: .omitted)
-                                Text(start == end ? start : "\(start) – \(end)").font(.caption.weight(.semibold))
-                                Text("\(event.photoCount) \(event.photoCount == 1 ? "photo" : "photos") · \(event.screenshotCount) \(event.screenshotCount == 1 ? "screenshot" : "screenshots")").font(.caption)
-                                if !event.labels.isEmpty {
-                                    Text("Vision labels: " + event.labels.prefix(5).joined(separator: ", "))
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
+                                Text(event.start.formatted(date: .abbreviated, time: .omitted)).font(.caption.weight(.semibold))
+                                Text("\(event.photoCount) photos · \(event.screenshotCount) screenshots").font(.caption)
+                                if !event.labels.isEmpty { Text("Vision labels: " + event.labels.prefix(5).joined(separator: ", ")).font(.caption2) }
                             }
                         }
                         Button("Read photo activity") { m.readPhotos() }.disabled(m.busy)
                     }.padding(.top, 6)
                 } label: {
-                    Label("Photo activity", systemImage: "photo.on.rectangle")
-                        .font(.callout.weight(.medium))
+                    Label("Photo activity", systemImage: "photo.on.rectangle").font(.callout.weight(.medium))
                 }
-                if !m.movements.isEmpty {
-                    ForEach(m.movements) { MovementCard(leak: $0) }
-                }
-                // A flight, a hotel and a guesthouse aren't three things you did — they're
-                // one trip. Grouped, because that's how a person remembers it.
-                if !m.travel.isEmpty {
-                    HStack {
-                        Text("TRAVEL").font(.caption2.weight(.semibold))
-                        Spacer()
-                        Text("\(m.travel.count)").font(.caption2)
-                    }.foregroundStyle(.secondary)
-                    ForEach(m.travel.prefix(8)) { TravelRow(booking: $0) }
-                }
-                // Demoted deliberately. Bookings outnumber threads roughly 6:1 in a real
-                // year, and where you went is what a person actually wants back — what
-                // they were googling is context, not the product. It also holds the
-                // sensitive material, so it belongs closed by default.
-                if !m.threads.isEmpty {
-                    DisclosureGroup {
-                        VStack(spacing: 8) {
-                            ForEach(m.threads) { ThreadCard(thread: $0) }
-                        }.padding(.top, 6)
-                    } label: {
-                        Text("What you were working out · \(m.threads.count)")
-                            .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                    }
-                }
-                // The model's essay used to open this view. It said little the cards above
-                // don't say better, and it was the surface that invented a city — so it is
-                // gone from here entirely. Ask is where the model belongs.
-                if !m.brief.isEmpty {
-                    DisclosureGroup {
-                        Text(markdown(m.brief)).font(.callout).textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
-                    } label: {
-                        Text("What \(m.model) made of it").font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 2)
-                }
-                if !m.themes.isEmpty {
-                    Text("THEMES").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                    FlowChips(items: m.themes.map { "\($0.name) · \($0.visits)" })
-                }
-                if m.brief.isEmpty && !m.busy {
-                    Button("Read history") { m.loadTrail() }.buttonStyle(.borderedProminent)
-                }
+            }.padding(14)
+        }
+    }
+
+    @ViewBuilder private var selectedEvidence: some View {
+        switch m.historyFocus {
+        case .overview:
+            Text("Sites and categories").font(.headline)
+            Text("Counts are page visits in the retained window, not time spent.").font(.caption).foregroundStyle(.secondary)
+            FlowChips(items: m.themes.map { "\($0.name) · \($0.visits)" })
+            ForEach(m.sites) { site in
+                HStack { Text(site.host); Spacer(); Text(site.visits.formatted()).monospacedDigit() }.font(.callout)
             }
-            .padding(14)
+        case .research:
+            Text("Recorded research threads").font(.headline)
+            Text("Selected clusters of related searches. Open a thread to inspect the original wording.").font(.caption).foregroundStyle(.secondary)
+            ForEach(m.threads) { ThreadCard(thread: $0) }
+        case .travel:
+            Text("Travel-related pages").font(.headline)
+            Text("A checkout, itinerary or confirmation page is a browsing signal. It does not prove a completed payment or trip.").font(.caption).foregroundStyle(.secondary)
+            ForEach(m.travel.prefix(24)) { TravelRow(booking: $0) }
+        case .privacy:
+            Text("Tracking signals").font(.headline)
+            Text("Patterns recorded in links. These do not establish what a third party stored or used.").font(.caption).foregroundStyle(.secondary)
+            ForEach(m.trackerSignals.prefix(24)) { signal in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack { Text(signal.host).font(.callout.weight(.medium)); Spacer(); Text(signal.count.formatted()).monospacedDigit() }
+                    Text(signal.kind.rawValue).font(.caption).foregroundStyle(.secondary)
+                    Text(signal.example).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(2).textSelection(.enabled)
+                }.padding(.vertical, 4)
+            }
+            if m.trackerSignals.isEmpty { Text("No tracking parameter or redirect pattern was found in this window.").font(.callout) }
+        case .places:
+            Text("Map links").font(.headline)
+            Text("Coordinates found in recorded URLs, with visit dates. A link does not prove you went there.").font(.caption).foregroundStyle(.secondary)
+            ForEach(m.movements.prefix(24)) { MovementCard(leak: $0) }
         }
     }
 
     private var ask: some View {
         VStack(spacing: 0) {
+            Picker("Assistant source", selection: $m.assistantSource) {
+                ForEach(BarModel.AssistantSource.allCases, id: \.self) { source in Text(source.rawValue).tag(source) }
+            }.pickerStyle(.segmented).padding(.horizontal, 14).padding(.vertical, 6)
+            if m.assistantSource == .connected {
+                ConnectedAssistantView(model: m.connectedAssistant)
+            } else {
+            Text("Retained Safari evidence · on-device · \(m.historyFocus.title)")
+                .font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if m.log.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Ask anything, or dig in.").font(.callout.weight(.medium))
-                            ForEach(["where did I go last month — and when?",
-                                     "what was I reading about?",
-                                     "who tracked me?"], id: \.self) { s in
+                            Text("Ask about the evidence, then refine it.").font(.callout.weight(.medium))
+                            ForEach(m.questions(for: m.historyFocus), id: \.self) { s in
                                 Button { m.input = s; m.ask() } label: {
                                     Text("“\(s)”").font(.caption).foregroundStyle(.tint)
                                 }.buttonStyle(.plain)
@@ -493,6 +599,7 @@ struct BarView: View {
                     .buttonStyle(.plain).font(.title2).foregroundStyle(.tint)
                     .disabled(m.busy || m.input.isEmpty || m.model.isEmpty)
             }.padding(.horizontal, 14).padding(.vertical, 10)
+            }
         }
     }
 

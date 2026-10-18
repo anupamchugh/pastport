@@ -14,6 +14,10 @@ struct PrivacyStateTests {
         model.input = "Where did I go?"
         model.ask()
         #expect(model.log.count == 2)
+        #expect(model.historyLoaded)
+        #expect(!model.sites.isEmpty)
+        model.selectFocus(.travel)
+        #expect(model.historyFocus == .travel)
         let beforeLock = model.contentID
         model.lockAndClear()
         #expect(model.contentID != beforeLock)
@@ -21,6 +25,8 @@ struct PrivacyStateTests {
         #expect(model.photoEvents.isEmpty && model.themes.isEmpty)
         #expect(model.log.isEmpty && model.input.isEmpty && model.brief.isEmpty)
         #expect(!model.busy)
+        #expect(!model.historyLoaded && model.sites.isEmpty && model.trackerSignals.isEmpty)
+        #expect(model.journeyReceipt == nil && model.suggestedQuestions.isEmpty)
         model.start() // Reappearing window must not repopulate cleared evidence.
         #expect(model.movements.isEmpty && model.photoEvents.isEmpty)
         model.loadTrail()

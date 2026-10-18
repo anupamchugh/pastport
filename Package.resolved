@@ -1,0 +1,22 @@
+{
+  "originHash" : "48713b0c07fc801be3eb34f6be67d24a7a576d713c8fdb20a1fe8705acf2997e",
+  "pins" : [
+    {
+      "identity" : "foundation-models-framework-lab",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/rudrankriyam/Foundation-Models-Framework-Lab.git",
+      "state" : {
+        "revision" : "9e3dd5ae24ba6821626f24bfbbb187f4b88d7efe"
+      }
+    },
+    {
+      "identity" : "foundationmodelskit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/rryam/FoundationModelsKit.git",
+      "state" : {
+        "revision" : "65834b11d6da41e4a2f51003eba930b211d6f031"
+      }
+    }
+  ],
+  "version" : 3
+}

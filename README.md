@@ -2,7 +2,7 @@
 
 **Your browser history knows where you live. Pastport helps you read it.**
 
-Pastport is a native macOS app and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. It runs locally, behind Touch ID, with no cloud account or hosted database. It can use Apple Foundation Models on macOS 26 or a local Ollama model; neither path sends data to a cloud service.
+Pastport is a native macOS app and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. Safari analysis runs locally, behind Touch ID, with no cloud account or hosted database. Apple Foundation Models run on-device; local Ollama remains available for CLI phrasing. The separate Connected tools assistant can contact the services shown in each approval request.
 
 ![Pastport Recent view](docs/pastport-recent.png)
 
@@ -10,18 +10,18 @@ Pastport is a native macOS app and CLI for finding travel trails, bookings, thre
 
 Swift computes the facts. The on-device model only phrases a small evidence packet. If the evidence does not contain an answer, Pastport should say it does not know.
 
-The live history database is copied to a temporary location and queried read-only. Query strings are stripped by default, sensitive threads are gated, and nothing leaves the Mac.
+The live history database is copied to a temporary location and queried read-only. Query strings are stripped by default, sensitive threads are gated, and the history conversation has no network tools. Connected tools receive no Safari history.
 
 ## What it finds
 
 - **Movements** — coordinates and timestamps carried by links.
-- **Bookings** — confirmations, itineraries, receipts, and booking activity.
+- **Bookings** — booking-like pages, including confirmation and checkout URLs. A visit does not prove a purchase, reservation, or completed trip.
 - **Threads** — short bursts of related activity.
 - **Trackers** — redirects, interstitials, and attribution parameters.
 
 ## Install
 
-Requires macOS 14 or later. Apple Foundation Models require macOS 26 with Apple Intelligence enabled. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
+Requires macOS 26 or later. Apple Foundation Models require Apple Intelligence enabled on a supported Mac. macOS 27 enables dynamic session profiles; macOS 26 uses a static profile. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
 
 ```bash
 git clone https://github.com/anupamchugh/pastport
@@ -34,7 +34,15 @@ The app starts with history and Photos closed. Choose **Read history**, then gra
 
 Choose **All retained history** in the model/window menu to remove the date cutoff. The coverage line shows unique visits, discovered Safari sources, retained dates, and whether the safety cap was reached. A failed source fails the read; a capped result is labelled partial. Safari may have already deleted older history, so this is not a lifetime record.
 
-Ask displays the measured duration, actual tool calls and tool-result count from the Foundation Models transcript, grounding label, and token counts when the SDK exposes them. An empty tool-call list means the model answered from the computed evidence packet. These are per-run measurements, not an Instruments trace or an evolving personal profile.
+**Explore** starts with exact counts and source evidence, then offers research, travel, privacy, and places questions when matching evidence exists. **Ask → History** keeps a conversation over the authorized in-memory snapshot. Date-qualified questions narrow that snapshot; unsupported date phrases return no evidence rather than widening the query. History text is treated as untrusted source material.
+
+Answers stream completed, validated sections from typed `@Generable` output. Each section cites a deterministic evidence field. Numeric checks reject unsupported counts and completed-booking claims; the source excerpts remain visible for checking model interpretations. These checks do not make every natural-language interpretation infallible.
+
+**Session details** shows the profile mode, turn, measured duration, actual tool calls/results, per-turn token usage when available, and context occupancy labelled as tokenized or estimated. Context is rebuilt near its budget; macOS 27 can retain bounded complete turns. A new focus changes the dynamic profile and its small tool set. This profile describes the conversation workflow, not a personality inferred from browsing.
+
+**Ask → Connected tools** is a separate conversation with optional Weather, Web, Calendar, Reminders, Contacts, Music, Location, Health, and session-observability tools from Foundation Lab. At most three tools can be selected. All start off. Each call shows its exact arguments, destination, and service and waits for approval. OS permissions are separate. Contacts, Calendar, Reminders, and Music are restricted to supported read operations; Health is unavailable when the platform reports no support. Lock, clear, or changing tools invalidates pending work. Web and Weather may use external services; Safari evidence is not included in that conversation.
+
+The implementation pins [FoundationModelsKit](https://github.com/rryam/FoundationModelsKit) and [Foundation Lab](https://github.com/rudrankriyam/Foundation-Models-Framework-Lab) in `Package.resolved`. It follows Apple's [dynamic-session API](https://developer.apple.com/documentation/foundationmodels/composing-dynamic-sessions) and native Foundation Models tools; no MCP server is required for these in-app tools.
 
 **Export to Foundation Lab** saves an explicit JSON experiment containing category counts and coverage only. It excludes URLs, titles, searches, coordinates, and answers. Import that file in Foundation Lab's Library to inspect and run an on-device experiment; the import does not grant Safari access or execute automatically. The exported file persists until you delete it.
 
@@ -54,7 +62,7 @@ pastport bookings
 pastport trail
 pastport trackers
 pastport photos --days 30
-pastport ask "what did I book and where did I stay"
+pastport agent --all "Which booking-like pages appear, and what do they prove?"
 pastport eval --runs 3
 ```
 

@@ -33,9 +33,9 @@ public struct LocationLeak: Identifiable, Finding {
 
     /// A deterministic one-line headline — the phrase a notification shows, no model needed.
     public var headline: String {
-        let when = time.formatted(.dateTime.weekday(.wide).hour().minute())
-        if let app = fromApp { return "Your iPhone left \(app) on \(when)" }
-        return "You looked up a place on \(when)"
+        let when = time.formatted(.dateTime.year().month(.abbreviated).day().hour().minute())
+        if let app = fromApp { return "Map redirect from \(app) · \(when)" }
+        return "Map link in Safari · \(when)"
     }
 
     /// The address the URL is carrying, if it carries one. No geocoder, no network — map
@@ -104,11 +104,11 @@ public enum Movements {
         URL. Often an app — a listing, hotel, or travel site — routed an outbound tap through a
         "You're leaving…" interstitial to a map, embedding the GPS of where the person was headed.
 
-        Narrate what this reveals, in the second person (e.g. "Your iPhone left <the app> on…",
-        naming the actual app from the data).
-        For each notable leak, state plainly WHERE (the coordinate) and WHEN, and note that the
-        source app could see the same. Invent nothing that is not in the data; if you infer,
-        say you are inferring. Keep it to a few tight lines — this is Find My for everything.
+        Describe the recorded links and timestamps. A coordinate in a URL does not prove
+        physical presence, a trip, a completed booking, or which device opened the link.
+        State only the source host, map provider and coordinate actually in the evidence.
+        Do not infer the person's home, destination, sensitive traits or identity.
+        Keep it to a few factual lines.
         \(steer)
         LEAKS (last \(days) days):
         \(lines)

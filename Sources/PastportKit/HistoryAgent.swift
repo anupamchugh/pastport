@@ -162,7 +162,7 @@ struct StatsTool: Tool {
 @available(macOS 26, *)
 struct ThreadsTool: Tool {
     let name = "find_threads"
-    let description = "Find what the person was trying to work out: bursts of related searches, in their own words, with the sites they landed on. Use this for questions about interests, decisions, what they were researching, or what they have been thinking about."
+    let description = "Find clusters of recorded searches and destination sites. Search text is evidence of browsing, not proof of beliefs, intentions or completed actions."
     let visits: [Visit]
 
     @Generable
@@ -190,7 +190,7 @@ struct ThreadsTool: Tool {
 @available(macOS 26, *)
 struct BookingsTool: Tool {
     let name = "find_bookings"
-    let description = "Find things the person actually booked or paid for: confirmations, itineraries, tickets and receipts. Use this for questions about trips taken, flights, stays, purchases, or what they committed to."
+    let description = "Find visits to checkout, confirmation, itinerary and ticket pages. These are page signals, not proof of payment, a completed booking or a trip taken."
     let visits: [Visit]
 
     @Generable
@@ -202,8 +202,8 @@ struct BookingsTool: Tool {
     func call(arguments: Arguments) async throws -> String {
         var found = Bookings.scan(from: visits)
         if arguments.travelOnly { found = found.filter(\.isTravel) }
-        guard !found.isEmpty else { return "No bookings found." }
-        return found.prefix(12).map {
+        guard !found.isEmpty else { return "No booking-related page signals found." }
+        return "Recorded page visits only; completion is not verified.\n" + found.prefix(12).map {
             "\($0.headline)\($0.title.isEmpty ? "" : " — \($0.title.prefix(60))")"
         }.joined(separator: "\n")
     }
@@ -212,7 +212,7 @@ struct BookingsTool: Tool {
 @available(macOS 26, *)
 struct LocationTool: Tool {
     let name = "find_location_leaks"
-    let description = "Find moments where the person's coordinates AND a timestamp were exposed in a URL — e.g. leaving a listing, hotel, or travel app out to a map. Returns time, the app they left, the GPS pin, and the map provider. Use this for questions about where the person went, hotels, flights, listings, or being tracked to a place."
+    let description = "Find coordinates embedded in recorded URLs, with the visit timestamp and source host. A map link does not prove physical presence, a trip or the originating device."
     let visits: [Visit]
 
     @Generable
@@ -223,7 +223,7 @@ struct LocationTool: Tool {
         guard !leaks.isEmpty else { return ("No location leaks found.") }
         return leaks.prefix(15).map { leak in
             let when = leak.time.formatted(.dateTime.month().day().hour().minute())
-            let src = leak.fromApp.map { "left \($0)" } ?? "map lookup"
+            let src = leak.fromApp.map { "redirect link from \($0)" } ?? "map link"
             return "\(when) | \(src) | \(String(format: "%.5f", leak.lat)),\(String(format: "%.5f", leak.lng)) | \(leak.mapProvider)"
         }.joined(separator: "\n")
     }
