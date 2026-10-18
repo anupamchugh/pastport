@@ -193,7 +193,11 @@ public enum Threads {
             guard concentration >= minConcentration else { continue }
             candidates.append((Double(positions.count) * concentration, term))
         }
-        candidates.sort { $0.score > $1.score }
+        // Dictionary iteration is intentionally unspecified. Break equal scores by
+        // term so repeated scans of the same history produce the same anchor.
+        candidates.sort {
+            $0.score != $1.score ? $0.score > $1.score : $0.term < $1.term
+        }
 
         // Merge co-occurring terms into one thread so `kyoto` and `visa` don't become two
         // findings. Highest-scoring term claims its partners; they can't anchor their own.
@@ -227,7 +231,9 @@ public enum Threads {
             for o in others where window.contains(o.time) {
                 destCounts[o.host, default: 0] += 1
             }
-            let destinations = destCounts.sorted { $0.value > $1.value }.prefix(6).map(\.key)
+            let destinations = destCounts.sorted {
+                $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key
+            }.prefix(6).map(\.key)
 
             // Dedupe queries while preserving the order they were typed in.
             var seenQueries = Set<String>()

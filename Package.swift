@@ -14,6 +14,7 @@ let package = Package(
             name: "PastportBar",
             dependencies: ["PastportKit"]
         ),
+        .testTarget(name: "PastportBarTests", dependencies: ["PastportBar"]),
         .testTarget(
             name: "PastportKitTests",
             dependencies: ["PastportKit"]

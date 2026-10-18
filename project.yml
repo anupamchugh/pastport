@@ -8,8 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
     # Menu-bar utility that reads Safari history via Full Disk Access — must NOT
     # be App-Sandboxed (sandbox blocks History.db). Hardened runtime for notarization.
     ENABLE_HARDENED_RUNTIME: "YES"
@@ -45,6 +45,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.anupamchugh.Pastport
         PRODUCT_NAME: Pastport
         GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pastport reads local photo activity only when you choose. Images stay on your Mac; screenshots contribute counts only."
         INFOPLIST_KEY_LSUIElement: "YES"          # menu-bar only, no Dock icon
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         CODE_SIGN_ENTITLEMENTS: Pastport.entitlements

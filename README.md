@@ -26,11 +26,15 @@ Requires macOS 14 or later. Apple Foundation Models require macOS 26 with Apple 
 ```bash
 git clone https://github.com/anupamchugh/pastport
 cd pastport
-swift build -c release
+brew install xcodegen
 ./install.sh
 ```
 
-Grant Full Disk Access to the app or terminal when prompted. The safe demo mode never reads Safari history:
+The app starts with history and Photos closed. Choose **Read history**, then grant Full Disk Access to the app in System Settings if needed. Photos are optional: **Photo activity → Read photo activity** authenticates first and asks for Photos access only when you choose. It reads up to 500 local images, classifies ordinary photos on-device, and counts screenshots without inspecting their pixels. No iCloud image downloads are requested.
+
+**Lock & clear** clears cached history, photo activity and answers in both the window and menu-bar panel. Screen lock does the same. Changing the date range clears old evidence before another read.
+
+The source installer creates an ad-hoc-signed local development build, not a notarized distribution. The safe demo mode never reads Safari history:
 
 ```bash
 ./install.sh --demo
@@ -43,11 +47,28 @@ pastport recent
 pastport bookings
 pastport trail
 pastport trackers
+pastport photos --days 30
 pastport ask "what did I book and where did I stay"
 pastport eval --runs 3
 ```
 
 `recent`, `search`, `top`, `when`, `stats`, `bookings`, and `trackers` run without a model. `brief`, `trail`, `threads`, `ask`, `agent`, and `eval` can use Apple Foundation Models or local Ollama.
+
+## Build a DMG
+
+Use Xcode and XcodeGen. To produce an explicitly labelled local preview without distribution credentials:
+
+```bash
+./package-release.sh --unsigned-preview
+```
+
+For a public distribution, supply your Developer ID identity and an existing notarytool keychain profile:
+
+```bash
+./package-release.sh --sign 'Developer ID Application: Your Name (TEAMID)' --notary-profile YOUR_PROFILE
+```
+
+The script builds the native app, checks its version, creates DMG and ZIP artifacts and a SHA-256 manifest. The signed path notarizes and staples both the app and DMG and runs Gatekeeper verification. It never installs the app or publishes to GitHub. Unsigned previews are not suitable for public distribution.
 
 ## Development
 

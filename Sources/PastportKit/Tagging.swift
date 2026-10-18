@@ -48,12 +48,16 @@ public enum Guided {
                     to: Threads.narrationPrompt(for: thread, instruction: instruction),
                     generating: GeneratedNarration.self
                 )
-                return ThreadNarration(intent: response.content.intent,
-                                       exposure: response.content.exposure)
+                return narration(from: .produced(
+                    intent: response.content.intent,
+                    exposure: response.content.exposure
+                ))
             } catch let error as LanguageModelSession.GenerationError {
                 // Guardrails block sensitive input as well as output, so some of a real
                 // history simply cannot be narrated by this backend. Skip, don't fail.
-                if case .guardrailViolation = error { return nil }
+                if case .guardrailViolation = error {
+                    return narration(from: .guardrailRefusal)
+                }
                 throw CLIError.msg("\(error)")
             }
         }
@@ -61,6 +65,22 @@ public enum Guided {
         throw CLIError.msg("Guided narration needs macOS 26 with Apple Intelligence enabled.")
     }
 
+    /// The only way a narration is built. A refusal yields nothing for that thread.
+    public static func narration(from attempt: NarrationAttempt) -> ThreadNarration? {
+        switch attempt {
+        case .produced(let intent, let exposure):
+            return ThreadNarration(intent: intent, exposure: exposure)
+        case .guardrailRefusal:
+            return nil
+        }
+    }
+
+}
+
+/// What one narration attempt did. A guardrail refusal is not a failed run.
+public enum NarrationAttempt: Equatable, Sendable {
+    case produced(intent: String, exposure: String)
+    case guardrailRefusal
 }
 
 #if canImport(FoundationModels)
