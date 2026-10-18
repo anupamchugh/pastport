@@ -36,7 +36,7 @@ Choose **All retained history** in the model/window menu to remove the date cuto
 
 Ask displays the measured duration, actual tool calls and tool-result count from the Foundation Models transcript, grounding label, and token counts when the SDK exposes them. An empty tool-call list means the model answered from the computed evidence packet. These are per-run measurements, not an Instruments trace or an evolving personal profile.
 
-**Export to Foundation Lab** saves an explicit JSON experiment containing category counts and coverage only. It excludes URLs, titles, searches, coordinates, and answers. Import that file in Foundation Lab's Playground to inspect and run an on-device experiment; the import does not grant Safari access or execute automatically. The exported file persists until you delete it.
+**Export to Foundation Lab** saves an explicit JSON experiment containing category counts and coverage only. It excludes URLs, titles, searches, coordinates, and answers. Import that file in Foundation Lab's Library to inspect and run an on-device experiment; the import does not grant Safari access or execute automatically. The exported file persists until you delete it.
 
 **Lock & clear** clears cached history, photo activity and answers in both the window and menu-bar panel. Screen lock does the same. Changing the date range clears old evidence before another read.
 

@@ -292,7 +292,7 @@ final class BarModel: ObservableObject {
         do {
             let data = try HistoryAgent.labExperiment(visits: visits, scope: coverage)
             try data.write(to: url, options: .atomic)
-            status = "Experiment exported. In Foundation Lab, import this JSON in Playground."
+            status = "Experiment exported. In Foundation Lab, use Import Pastport in Library."
         } catch { status = "Experiment export failed: \(error.localizedDescription)" }
     }
 
