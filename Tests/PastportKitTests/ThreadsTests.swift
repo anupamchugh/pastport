@@ -59,6 +59,42 @@ final class ThreadsTests: XCTestCase {
         XCTAssertFalse(thread.destinations.contains("google.com"))
     }
 
+    func testEqualCandidateScoresUseTermAsDeterministicTieBreaker() {
+        let time = Date(timeIntervalSince1970: 1_000_000)
+        func fixedVisit(_ title: String) -> Visit {
+            Visit(time: time, title: title, url: "https://www.google.com/search")
+        }
+        let visits = [
+            fixedVisit("beta hotel - Google Search"),
+            fixedVisit("beta visa - Google Search"),
+            fixedVisit("beta cost - Google Search"),
+            fixedVisit("gamma hotel - Google Search"),
+            fixedVisit("gamma visa - Google Search"),
+            fixedVisit("gamma cost - Google Search"),
+        ]
+
+        let first = Threads.scan(from: visits, limit: 20)
+        let second = Threads.scan(from: visits, limit: 20)
+        XCTAssertEqual(first.map(\.term), second.map(\.term))
+        XCTAssertEqual(first.first?.term, "beta")
+    }
+
+    func testEqualDestinationCountsUseHostAsDeterministicTieBreaker() {
+        let time = Date(timeIntervalSince1970: 1_000_000)
+        let searches = [
+            Visit(time: time, title: "kyoto hotel - Google Search", url: "https://www.google.com/search"),
+            Visit(time: time, title: "kyoto visa - Google Search", url: "https://www.google.com/search"),
+            Visit(time: time, title: "kyoto cost - Google Search", url: "https://www.google.com/search"),
+        ]
+        let visits = searches + [
+            Visit(time: time, title: "Zed", url: "https://zed.example/"),
+            Visit(time: time, title: "Alpha", url: "https://alpha.example/"),
+        ]
+
+        let destinations = Threads.scan(from: visits)[0].destinations
+        XCTAssertEqual(destinations.prefix(2), ["alpha.example", "zed.example"])
+    }
+
     func testEvergreenTermsAreNotThreads() {
         // Same search count as the burst above, but spread across two months: a habit,
         // not a decision. This is the check that keeps 9,000-hits-a-year terms out.

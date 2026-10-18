@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import Photos
 import PastportKit
 
 @MainActor
@@ -31,40 +32,100 @@ final class BarModel: ObservableObject {
 
     @Published var status = ""
     @Published var busy = false
+    @Published var photoEvents: [PhotoEvent] = []
+    @Published var photoStatus = "Photos are closed. Read activity when you choose."
+    @Published var contentID = UUID()
+    private var operation: Task<Void, Never>?
+    private var generation = UUID()
+    private var started = false
 
     private var unlocked = false
     private var visits: [Visit] = []     // cached for the agent session
 
     var usingApple: Bool { model == AppleFoundation.displayName }
 
-    init() {
+    private let demoMode: Bool
+
+    init(demoMode: Bool = ProcessInfo.processInfo.arguments.contains("--demo")
+         || ProcessInfo.processInfo.environment["PASTPORT_DEMO"] == "1") {
+        self.demoMode = demoMode
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.unlocked = false; SessionLock.relock() }
+            Task { @MainActor in self?.lockAndClear() }
         }
     }
 
-    /// Pick a default model (Apple first), then tell the person about their week.
+    /// Model discovery does not unlock history or read Photos.
     func start() {
+        guard !started else { return }
+        started = true
+        if demoMode {
+            models = ["Demo data"]; model = "Demo data"
+            loadDemo()
+            return
+        }
+        status = "History is closed. Read your history when you choose."
         Task { @MainActor in
-            if demoMode {
-                models = ["Demo data"]
-                model = "Demo data"
-                loadDemo()
-                return
-            }
             var list: [String] = AppleFoundation.isAvailable ? [AppleFoundation.displayName] : []
             list += (try? await Ollama.listModels()) ?? []
             models = list
             if model.isEmpty { model = list.first ?? "" }
-            loadTrail()
         }
     }
 
-    private var demoMode: Bool {
-        ProcessInfo.processInfo.arguments.contains("--demo")
-            || ProcessInfo.processInfo.environment["PASTPORT_DEMO"] == "1"
+    func lockAndClear() {
+        generation = UUID()
+        operation?.cancel(); operation = nil
+        unlocked = false; busy = false
+        visits = []; movements = []; threads = []; travel = []; themes = []
+        photoEvents = []; brief = ""; log = []; input = ""
+        photoStatus = "Photos are closed. Read activity when you choose."
+        status = "Locked. Cached history, photo activity and answers cleared."
+        contentID = UUID()
+        if !demoMode { SessionLock.relock() }
+    }
+
+    func readPhotos() {
+        guard !busy else { return }
+        if demoMode {
+            let now = Date()
+            photoEvents = PhotoEvents.cluster([
+                PhotoRecord(time: now, isScreenshot: false, labels: ["landscape"]),
+                PhotoRecord(time: now.addingTimeInterval(60), isScreenshot: true, labels: [])
+            ])
+            photoStatus = "Demo photo activity · fictional records; no library read"
+            return
+        }
+        let token = generation
+        let since = Date().addingTimeInterval(-Double(days) * 86400)
+        busy = true
+        operation = Task { @MainActor in
+            defer { if token == generation { busy = false } }
+            do {
+                // Authentication precedes even the Photos permission prompt.
+                let code = await Task.detached {
+                    SessionLock.ensureUnlocked(reason: "read your local photo activity", graceMinutes: 0)
+                }.value
+                guard token == generation, !Task.isCancelled else { SessionLock.relock(); return }
+                guard code == 0 else { photoStatus = "Authentication cancelled — Photos kept closed."; return }
+                if PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined {
+                    _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                }
+                guard token == generation, !Task.isCancelled else { return }
+                let records = try await PhotoLibraryProvider().records(since: since, limit: 500)
+                guard token == generation, !Task.isCancelled else { return }
+                photoEvents = PhotoEvents.cluster(records)
+                photoStatus = "Local Photos · up to 500 images; screenshots counted only"
+            } catch is CancellationError {
+            } catch let error as PhotoLibraryError {
+                guard token == generation else { return }
+                photoEvents = []; photoStatus = PhotoEvents.statusLine(for: error)
+            } catch {
+                guard token == generation else { return }
+                photoEvents = []; photoStatus = "Photo activity could not be read. Try again after checking Photos access."
+            }
+        }
     }
 
     private func loadDemo() {
@@ -79,12 +140,13 @@ final class BarModel: ObservableObject {
         status = "Demo data · no history read"
     }
 
-    private func unlockAndFetch() async -> [Visit]? {
+    private func unlockAndFetch(token: UUID) async -> [Visit]? {
         if !unlocked {
             status = "Waiting for Touch ID…"
             let ok = await Task.detached {
                 SessionLock.ensureUnlocked(reason: "unlock your Safari browsing history", graceMinutes: 480)
             }.value
+            guard token == generation, !Task.isCancelled else { SessionLock.relock(); return nil }
             guard ok == 0 else {
                 status = ok == 2 ? "No Touch ID / passcode — history kept closed."
                                  : "Touch ID cancelled — history kept closed."
@@ -92,10 +154,16 @@ final class BarModel: ObservableObject {
             }
             unlocked = true
         }
+        guard token == generation, !Task.isCancelled else { return nil }
         status = "Reading history…"
         let d = days
-        do { return try await Task.detached { try fetchVisits(days: d, keyword: nil, limit: 300_000, hosts: []) }.value }
+        do {
+            let result = try await Task.detached { try fetchVisits(days: d, keyword: nil, limit: 300_000, hosts: []) }.value
+            guard token == generation, !Task.isCancelled else { return nil }
+            return result
+        }
         catch {
+            guard token == generation else { return nil }
             let t = "\(error)"
             status = t.lowercased().contains("operation not permitted")
                 ? "Needs Full Disk Access — enable Pastport in System Settings › Privacy."
@@ -105,16 +173,18 @@ final class BarModel: ObservableObject {
     }
 
     func loadTrail() {
+        guard !busy else { return }
         guard !demoMode else {
             loadDemo()
             return
         }
-        Task { @MainActor in
-            busy = true; defer { busy = false }
-            brief = ""; movements = []; threads = []; travel = []; themes = []
-            guard let v = await unlockAndFetch(), !v.isEmpty else {
-                if status.isEmpty { status = "No visits in the last \(days) days." }; return
-            }
+        let token = generation
+        busy = true
+        operation = Task { @MainActor in
+            defer { if token == generation { busy = false } }
+            brief = ""; movements = []; threads = []; travel = []; themes = []; visits = []
+            guard let v = await unlockAndFetch(token: token) else { return }
+            guard !v.isEmpty else { status = "No visits in the last \(days) days."; return }
             visits = v
             // All three are pure functions over the rows, and each walks up to 300k of them.
             // Run them off the main actor together or the window freezes for the whole scan.
@@ -124,6 +194,7 @@ final class BarModel: ObservableObject {
                  intents: Threads.scan(from: v, limit: 6),
                  booked: Bookings.scan(from: v).filter(\.isTravel))
             }.value
+            guard token == generation, !Task.isCancelled else { return }
             let s = scanned.stats
             movements = scanned.leaks
             threads = scanned.intents
@@ -138,30 +209,41 @@ final class BarModel: ObservableObject {
                 topSites: Digest.ranked(s.topHosts.map { ($0.host, $0.visits) }, label: "SITES"),
                 movements: moves, threads: intents, days: days, instruction: nil
             )
+            guard !model.isEmpty else {
+                status = "History ready. No local model is available; evidence cards work without one."
+                return
+            }
             status = "Reading your last \(days) days on-device with \(model)…"
             let apple = usingApple, m = model
             do {
-                brief = try await Task.detached {
+                let generated = try await Task.detached {
                     apple ? try await AppleFoundation.generate(prompt: prompt)
                           : try await Ollama.generate(model: m, prompt: prompt)
                 }.value
-                status = ""
-            } catch { status = "\(error)" }
+                guard token == generation, !Task.isCancelled else { return }
+                brief = generated; status = "History ready · facts computed locally"
+            } catch {
+                guard token == generation else { return }
+                status = "History ready. The local model could not finish; evidence cards are still available."
+            }
         }
     }
 
     func ask() {
         let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return }
+        guard !q.isEmpty, !busy, !model.isEmpty else { return }
         input = ""
         log.append(QA(role: "user", text: q))
         if demoMode {
             log.append(QA(role: "assistant", text: "Demo mode only uses fictional rows. I found a demo Airbnb movement in Paris and two demo travel commitments; no Safari history was read."))
             return
         }
-        Task { @MainActor in
-            busy = true; defer { busy = false }
-            if visits.isEmpty { guard let v = await unlockAndFetch() else { return }; visits = v }
+        let token = generation
+        busy = true
+        operation = Task { @MainActor in
+            defer { if token == generation { busy = false } }
+            if visits.isEmpty { guard let v = await unlockAndFetch(token: token) else { return }; visits = v }
+            guard !visits.isEmpty else { status = "No history in this window to answer from."; return }
             let v = visits, apple = usingApple, m = model
             do {
                 let reply: String
@@ -174,8 +256,12 @@ final class BarModel: ObservableObject {
                     let ctx = "Answer only from this person's Safari history. Top sites: \(sites). Categories: \(categories)."
                     reply = try await Ollama.generate(model: m, prompt: ctx + "\n\nQ: \(q)\nA:")
                 }
+                guard token == generation, !Task.isCancelled else { return }
                 log.append(QA(role: "assistant", text: reply))
-            } catch { log.append(QA(role: "assistant", text: "\(error)")) }
+            } catch {
+                guard token == generation else { return }
+                log.append(QA(role: "assistant", text: "The local model could not answer. Your history evidence remains available in Recent."))
+            }
         }
     }
 
@@ -183,7 +269,7 @@ final class BarModel: ObservableObject {
 }
 
 struct BarView: View {
-    @StateObject private var m = BarModel()
+    @ObservedObject var m: BarModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -193,7 +279,7 @@ struct BarView: View {
             Divider()
             footer
         }
-        .frame(width: 420, height: 560)
+        .frame(minWidth: 420, minHeight: 560)
         .onAppear { m.start() }
     }
 
@@ -215,12 +301,15 @@ struct BarView: View {
                 Picker("Window", selection: $m.days) {
                     Text("7 days").tag(7); Text("30 days").tag(30)
                     Text("90 days").tag(90); Text("1 year").tag(365)
-                }.onChange(of: m.days) { m.loadTrail() }
+                }.onChange(of: m.days) {
+                    m.lockAndClear()
+                    m.status = "Window changed. Read history or photo activity for the selected range."
+                }
             } label: {
                 Label(m.model.isEmpty ? "No model" : shortModel, systemImage: "cpu")
                     .font(.caption)
             }
-            .menuStyle(.borderlessButton).fixedSize()
+            .menuStyle(.borderlessButton).fixedSize().disabled(m.busy)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
@@ -245,10 +334,12 @@ struct BarView: View {
                 }.padding(.horizontal, 14).padding(.bottom, 6)
             }
 
-            switch m.tab {
-            case .trail: trail
-            case .ask: ask
-            }
+            Group {
+                switch m.tab {
+                case .trail: trail
+                case .ask: ask
+                }
+            }.id(m.contentID)
         }
     }
 
@@ -259,6 +350,29 @@ struct BarView: View {
                 // and it's the part no model touched — a deterministic headline can't be
                 // wrong. The model's prose is the least trustworthy thing on screen, so it
                 // goes last and starts collapsed.
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(m.photoStatus).font(.caption).foregroundStyle(.secondary)
+                        Text("Read-only, on this Mac. No iCloud downloads. Screenshot pixels are excluded.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        ForEach(Array(m.photoEvents.enumerated()), id: \.offset) { _, event in
+                            VStack(alignment: .leading, spacing: 3) {
+                                let start = event.start.formatted(date: .abbreviated, time: .omitted)
+                                let end = event.end.formatted(date: .abbreviated, time: .omitted)
+                                Text(start == end ? start : "\(start) – \(end)").font(.caption.weight(.semibold))
+                                Text("\(event.photoCount) \(event.photoCount == 1 ? "photo" : "photos") · \(event.screenshotCount) \(event.screenshotCount == 1 ? "screenshot" : "screenshots")").font(.caption)
+                                if !event.labels.isEmpty {
+                                    Text("Vision labels: " + event.labels.prefix(5).joined(separator: ", "))
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        Button("Read photo activity") { m.readPhotos() }.disabled(m.busy)
+                    }.padding(.top, 6)
+                } label: {
+                    Label("Photo activity", systemImage: "photo.on.rectangle")
+                        .font(.callout.weight(.medium))
+                }
                 if !m.movements.isEmpty {
                     ForEach(m.movements) { MovementCard(leak: $0) }
                 }
@@ -304,7 +418,7 @@ struct BarView: View {
                     FlowChips(items: m.themes.map { "\($0.name) · \($0.visits)" })
                 }
                 if m.brief.isEmpty && !m.busy {
-                    Button("Read my week") { m.loadTrail() }.buttonStyle(.borderedProminent)
+                    Button("Read history") { m.loadTrail() }.buttonStyle(.borderedProminent)
                 }
             }
             .padding(14)
@@ -342,6 +456,8 @@ struct BarView: View {
 
     private var footer: some View {
         HStack {
+            Button("Lock & clear", systemImage: "lock.fill") { m.lockAndClear() }
+                .controlSize(.small)
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }.controlSize(.small)
         }.padding(.horizontal, 14).padding(.vertical, 8)

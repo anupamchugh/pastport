@@ -23,6 +23,8 @@ public enum Digest {
         topSites: String,
         movements: [String],
         threads: [String] = [],
+        photoEvents: [String] = [],
+        photoStatus: String? = nil,
         days: Int,
         instruction: String?
     ) -> String {
@@ -32,6 +34,10 @@ public enum Digest {
         let intents = threads.isEmpty
             ? "(none found in the window)"
             : threads.prefix(6).joined(separator: "\n")
+        let photos = photoStatus ?? (photoEvents.isEmpty
+            ? "(none found in the window)"
+            : photoEvents.prefix(6).joined(separator: "\n")
+        )
         let steer = instruction.map { "\nThe person also asked you to: \($0)\n" } ?? ""
         return """
         You read a person's own Safari history, on-device, and write them a short recap — like
@@ -52,6 +58,9 @@ public enum Digest {
 
         MOVEMENTS (place + time found in URLs):
         \(moves)
+
+        PHOTO ACTIVITY (counts and labels from the local Photos library; screenshots are counts only):
+        \(photos)
 
         \(categorySummary)
 

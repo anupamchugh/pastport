@@ -23,6 +23,7 @@ COMMANDS
   stats             category + top-site breakdown                             [SQL only]
   trackers          outbound interstitials / redirects / UTM (deterministic)  [SQL only]
   bookings          confirmations, itineraries, receipts you actually made    [SQL only]
+  photos            photo bursts and scene labels from local Photos            [Photos]
   help              show this help
 
 OPTIONS
@@ -118,6 +119,13 @@ func loadVisits(keyword: String?, hosts: [String] = [], fetchLimit: Int? = nil,
     }
 }
 
+func loadPhotoEvents(since: Date) async throws -> [PhotoEvent] {
+    let records = try await PhotoLibraryProvider().records(
+        since: since, limit: min(limit, 500)
+    )
+    return PhotoEvents.cluster(records)
+}
+
 let dateFormatter: DateFormatter = {
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd HH:mm"
@@ -193,6 +201,19 @@ case "brief":
         "\($0.headline) → \(String(format: "%.5f", $0.lat)),\(String(format: "%.5f", $0.lng)) [\($0.mapProvider)]"
     }
     let intents = Threads.scan(from: visits, limit: 6).map(\.digestLine)
+    var photoLines: [String] = []
+    var photoStatus: String?
+    if !sqlOnly {
+        do {
+            photoLines = PhotoEvents.briefLines(try await loadPhotoEvents(
+                since: Date().addingTimeInterval(-Double(days) * 86_400)
+            ))
+        } catch let error as PhotoLibraryError {
+            photoStatus = PhotoEvents.statusLine(for: error)
+        } catch {
+            photoStatus = "Photo activity is unavailable: \(error)."
+        }
+    }
     if sqlOnly {
         print("Brief — last \(days) day(s) · \(s.total) visits\n")
         if !intents.isEmpty { print("Threads:"); for t in intents { print("  \(t)") }; print("") }
@@ -203,7 +224,7 @@ case "brief":
     let prompt = Digest.prompt(
         categorySummary: Digest.ranked(s.categories.map { ($0.name, $0.visits) }, label: "CATEGORIES"),
         topSites: Digest.ranked(s.topHosts.map { ($0.host, $0.visits) }, label: "SITES"),
-        movements: moves, threads: intents, days: days,
+        movements: moves, threads: intents, photoEvents: photoLines, photoStatus: photoStatus, days: days,
         instruction: query.isEmpty ? nil : query
     )
     print("Your last \(days) days, read on-device by \(modelName())…\n")
@@ -269,6 +290,29 @@ case "bookings":
         print("  \(b.headline)")
         if !b.title.isEmpty { print("      \(b.title.prefix(90))") }
         if showRaw { print("      \(b.url)") }
+    }
+
+case "photos":
+    if !daysExplicit { days = 365 }
+    do {
+        let events = try await loadPhotoEvents(
+            since: Date().addingTimeInterval(-Double(days) * 86_400)
+        )
+        guard !events.isEmpty else {
+            print("No photo activity in the last \(days) day(s).")
+            break
+        }
+        print("Photos — last \(days) day(s) · \(events.count) event(s)\n")
+        let lines = PhotoEvents.briefLines(events)
+        for line in lines { print("  \(line)") }
+    } catch PhotoLibraryError.empty {
+        print("No photo activity in the last \(days) day(s).")
+    } catch PhotoLibraryError.denied {
+        print("Photos access is denied. Grant Photos access to Pastport, then try again.")
+    } catch PhotoLibraryError.unavailable {
+        print("Photos are unavailable. Pastport did not request permission.")
+    } catch {
+        fail("could not read Photos: \(error)")
     }
 
 case "eval":

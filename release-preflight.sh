@@ -17,4 +17,6 @@ if ! grep -q 'Authority=Developer ID Application:' <<<"$details"; then
   echo "release preflight failed: direct distribution requires Developer ID Application" >&2
   exit 1
 fi
-spctl -a -vv "$app_path"
+codesign --verify --deep --strict --verbose=2 "$app_path"
+xcrun stapler validate "$app_path"
+spctl -a -vv --type execute "$app_path"

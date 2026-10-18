@@ -13,19 +13,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct PastportBarApp: App {
+    @StateObject private var model = BarModel()
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {
         // A real window — always visible, notch-proof.
         Window("Pastport", id: "main") {
-            BarView()
+            BarView(m: model)
                 .frame(minWidth: 480, minHeight: 560)
         }
         .defaultSize(width: 520, height: 640)
 
         // Plus the menu-bar item.
         MenuBarExtra("Pastport", systemImage: "clock.arrow.circlepath") {
-            BarView()
+            BarView(m: model)
                 .frame(width: 520, height: 620)
         }
         .menuBarExtraStyle(.window)

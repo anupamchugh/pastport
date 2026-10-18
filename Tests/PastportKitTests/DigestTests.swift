@@ -34,10 +34,29 @@ final class DigestTests: XCTestCase {
         let prompt = Digest.prompt(
             categorySummary: Digest.ranked(items, label: "CATEGORIES"),
             topSites: Digest.ranked([("example.com", 11018)], label: "SITES"),
-            movements: [], threads: ["Jun 12: kyoto, visa"], days: 90, instruction: nil
+            movements: [], threads: ["Jun 12: kyoto, visa"],
+            photoEvents: ["2026-10-18T00:00:00Z: 2 photos, 1 screenshots; labels: beach"],
+            days: 90, instruction: nil
         )
         XCTAssertFalse(prompt.contains("44926"))
         XCTAssertFalse(prompt.contains("11018"))
         XCTAssertTrue(prompt.contains("kyoto"), "real evidence still reaches the model")
+        XCTAssertTrue(prompt.contains("beach"), "photo evidence reaches the brief")
+    }
+
+    func testPhotoStatusIsDistinguishedFromEmptyEvidence() {
+        XCTAssertEqual(
+            PhotoEvents.statusLine(for: .denied),
+            "Photo activity is unavailable because Photos access is denied."
+        )
+        let prompt = Digest.prompt(
+            categorySummary: "",
+            topSites: "",
+            movements: [],
+            photoStatus: PhotoEvents.statusLine(for: .unavailable),
+            days: 30,
+            instruction: nil
+        )
+        XCTAssertTrue(prompt.contains("permission was not requested"))
     }
 }

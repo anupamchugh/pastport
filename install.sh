@@ -1,35 +1,40 @@
-#!/bin/sh
-# Build, install, and launch Pastport (native macOS menu-bar app).
-#
-# The post-install `codesign --force --deep` is REQUIRED, not optional:
-# xcodebuild's framework re-sign step preserves an old Team ID that no longer matches
-# the app binary, and dyld aborts at launch ("different Team IDs"). A deep ad-hoc
-# re-sign of the installed bundle gives the app and its embedded framework one identity.
-set -e
+#!/bin/bash
+# Install a local, ad-hoc-signed development build. Public releases use package-release.sh.
+set -euo pipefail
 cd "$(dirname "$0")"
-
+case "${1:-}" in
+  ""|--demo) ;;
+  *) echo "Usage: $0 [--demo]" >&2; exit 2 ;;
+esac
+[[ $# -le 1 ]] || { echo "Usage: $0 [--demo]" >&2; exit 2; }
 APP="/Applications/Pastport.app"
 BUILT=".build/xcode/Build/Products/Release/Pastport.app"
-
-echo "› Generating project + building (Release)…"
+if pgrep -x Pastport >/dev/null || pgrep -x PastportBar >/dev/null; then
+  echo "Quit Pastport before replacing the installed app." >&2
+  exit 1
+fi
 xcodegen generate
 xcodebuild -project Pastport.xcodeproj -scheme Pastport \
-  -configuration Release -derivedDataPath .build/xcode clean build \
-  | grep -E "error:|BUILD (SUCCEEDED|FAILED)"
-
-echo "› Installing to /Applications…"
-killall "Pastport" 2>/dev/null || true
-ditto "$BUILT" "$APP"
-
-echo "› Deep re-signing (fixes the Team-ID launch crash)…"
-codesign --force --deep --sign - "$APP"
-codesign --verify --deep "$APP" && echo "  signature valid ✓"
-
-echo "› Launching…"
-if [ "${1:-}" = "--demo" ]; then
-  open -a "Pastport" --args --demo
+  -configuration Release -derivedDataPath .build/xcode build
+STAGED=$(mktemp -d /Applications/.Pastport-install.XXXXXX)
+trap 'rm -rf "$STAGED"' EXIT
+ditto "$BUILT" "$STAGED/Pastport.app"
+codesign --force --deep --sign - "$STAGED/Pastport.app"
+codesign --verify --deep --strict "$STAGED/Pastport.app"
+# Preserve the previous installation rather than merging stale bundle contents.
+BACKUP=""
+if [[ -e "$APP" ]]; then
+  BACKUP="/Applications/Pastport.previous-$(date +%Y%m%d%H%M%S)-$$.app"
+  mv -f "$APP" "$BACKUP"
+fi
+if ! mv -f "$STAGED/Pastport.app" "$APP"; then
+  [[ -z "$BACKUP" ]] || mv -f "$BACKUP" "$APP"
+  exit 1
+fi
+if [[ "${1:-}" == "--demo" ]]; then
+  open "$APP" --args --demo
 else
   open "$APP"
 fi
-echo "Done. If it can't read history, grant Full Disk Access to Pastport"
-echo "in System Settings › Privacy & Security › Full Disk Access."
+[[ -z "$BACKUP" ]] || printf 'Previous installation preserved: %s\n' "$BACKUP"
+echo 'Local development app installed. History and Photos stay closed until you choose to read them.'

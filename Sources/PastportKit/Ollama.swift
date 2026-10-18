@@ -6,13 +6,26 @@ public struct ModelRun: Identifiable {
     public let id = UUID()
     public let model: String
     public let text: String
-    public let promptTokens: Int      // prompt_eval_count (input)
-    public let outputTokens: Int      // eval_count (output)
+    /// Input tokens when the backend exposed them. Nil means unavailable, not zero.
+    public let promptTokens: Int?
+    /// Output tokens when the backend exposed them. Nil means unavailable, not zero.
+    public let outputTokens: Int?
     public let totalSeconds: Double   // total_duration
     public let evalSeconds: Double    // eval_duration (generation only)
 
+    public init(model: String, text: String, promptTokens: Int?, outputTokens: Int?,
+                totalSeconds: Double, evalSeconds: Double) {
+        self.model = model
+        self.text = text
+        self.promptTokens = promptTokens
+        self.outputTokens = outputTokens
+        self.totalSeconds = totalSeconds
+        self.evalSeconds = evalSeconds
+    }
+
     public var tokensPerSecond: Double {
-        evalSeconds > 0 ? Double(outputTokens) / evalSeconds : 0
+        guard let outputTokens, evalSeconds > 0 else { return 0 }
+        return Double(outputTokens) / evalSeconds
     }
 }
 
