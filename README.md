@@ -32,6 +32,12 @@ brew install xcodegen
 
 The app starts with history and Photos closed. Choose **Read history**, then grant Full Disk Access to the app in System Settings if needed. Photos are optional: **Photo activity → Read photo activity** authenticates first and asks for Photos access only when you choose. It reads up to 500 local images, classifies ordinary photos on-device, and counts screenshots without inspecting their pixels. No iCloud image downloads are requested.
 
+Choose **All retained history** in the model/window menu to remove the date cutoff. The coverage line shows unique visits, discovered Safari sources, retained dates, and whether the safety cap was reached. A failed source fails the read; a capped result is labelled partial. Safari may have already deleted older history, so this is not a lifetime record.
+
+Ask displays the measured duration, actual tool calls and tool-result count from the Foundation Models transcript, grounding label, and token counts when the SDK exposes them. An empty tool-call list means the model answered from the computed evidence packet. These are per-run measurements, not an Instruments trace or an evolving personal profile.
+
+**Export to Foundation Lab** saves an explicit JSON experiment containing category counts and coverage only. It excludes URLs, titles, searches, coordinates, and answers. Import that file in Foundation Lab's Playground to inspect and run an on-device experiment; the import does not grant Safari access or execute automatically. The exported file persists until you delete it.
+
 **Lock & clear** clears cached history, photo activity and answers in both the window and menu-bar panel. Screen lock does the same. Changing the date range clears old evidence before another read.
 
 The source installer creates an ad-hoc-signed local development build, not a notarized distribution. The safe demo mode never reads Safari history:
