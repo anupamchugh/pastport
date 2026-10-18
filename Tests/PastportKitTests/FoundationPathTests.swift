@@ -57,6 +57,7 @@ final class FoundationPathTests: XCTestCase {
         XCTAssertNil(Guided.narration(from: .guardrailRefusal))
     }
 
+    #if canImport(FoundationModels)
     func testSearchToolUsesOnlyTheVisitsItWasGiven() async throws {
         guard #available(macOS 26, *) else { return }
         let kept = visit("Boarding pass", "https://air.test/eticket")
@@ -128,4 +129,5 @@ final class FoundationPathTests: XCTestCase {
         XCTAssertFalse(text.contains("48.8584"))
         XCTAssertFalse(text.contains("withheld-maps.test"))
     }
+    #endif
 }

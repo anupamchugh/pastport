@@ -76,12 +76,16 @@ public enum FoundationUsageAccounting {
 func foundationTokenUsage<Content: Generable>(
     from response: LanguageModelSession.Response<Content>
 ) -> FoundationTokenUsage {
+    // Runtime availability alone cannot make a newer SDK member compile with
+    // an older Xcode. Swift 6.4 ships with the SDK that exposes response usage.
+    #if compiler(>=6.4)
     if #available(macOS 27, *) {
         return FoundationUsageAccounting.usage(
             input: response.usage.input.totalTokenCount,
             output: response.usage.output.totalTokenCount
         )
     }
+    #endif
     return FoundationUsageAccounting.usage(input: nil, output: nil)
 }
 #endif
