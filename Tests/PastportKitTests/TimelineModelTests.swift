@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import Testing
 @testable import PastportKit
 
@@ -30,6 +31,13 @@ private struct ScriptedAnswerer: TimelineAnswering {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
+}
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var raised = false
+    func set() { lock.lock(); raised = true; lock.unlock() }
+    var value: Bool { lock.lock(); defer { lock.unlock() }; return raised }
 }
 
 @MainActor
@@ -123,6 +131,21 @@ struct TimelineModelTests {
         try await Task.sleep(for: .milliseconds(50))
         #expect(model.turns.first?.status == .stopped)
         #expect(model.turns.first?.answer == "Partial")
+    }
+
+    /// The composer shows Stop while `isAnswering`; a view reading it must hear when it ends.
+    @Test func finishingAnAnswerNotifiesObserversOfIsAnswering() async throws {
+        let model = phoneModel(ScriptedAnswerer(updates: [
+            TimelineAnswerProgress(text: "Done.", source: .facts(reason: "Apple Intelligence is still downloading.")),
+        ]))
+        model.input = "What happened?"
+        let changed = Flag()
+        model.ask()
+        #expect(model.isAnswering)
+        withObservationTracking { _ = model.isAnswering } onChange: { changed.set() }
+        try await waitUntil { model.turns.first?.status == .answered }
+        #expect(!model.isAnswering)
+        #expect(changed.value)
     }
 
     @Test func factsAnswerCarriesTheReason() async throws {

@@ -3,8 +3,12 @@ import XCTest
 
 final class BookingsTests: XCTestCase {
 
+    /// A fixed midday-UTC anchor. Bookings collapse per UTC day, so "hours ago from now"
+    /// split one stay across two days whenever the test ran shortly after UTC midnight.
+    private static let anchor = Date(timeIntervalSince1970: 1_751_371_200) // 2025-07-01 12:00 UTC
+
     private func visit(_ hoursAgo: Int, _ title: String, _ url: String) -> Visit {
-        Visit(time: Date().addingTimeInterval(-Double(hoursAgo) * 3600), title: title, url: url)
+        Visit(time: Self.anchor.addingTimeInterval(-Double(hoursAgo) * 3600), title: title, url: url)
     }
 
     // MARK: - shape, not brand

@@ -115,7 +115,8 @@ public final class TimelineModel {
     @ObservationIgnored private var journey: HistoryJourney?
     @ObservationIgnored private var operation: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
-    @ObservationIgnored private var activeAnswerID: UUID?
+    /// Observed: the composer swaps Send for Stop on `isAnswering`.
+    private var activeAnswerID: UUID?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var unlocked = false
     @ObservationIgnored var visits: [Visit] = []
