@@ -94,7 +94,7 @@ public final class TimelineModel {
     public internal(set) var photoEvents: [PhotoEvent] = []
     public internal(set) var photoStatus = TimelineModel.photosClosed
     public internal(set) var screenshots: [AddedScreenshot] = []
-    public internal(set) var screenshotStatus = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
+    public internal(set) var screenshotStatus = TimelineModel.screenshotsClosed
     /// Changes on every lock so views drop any local disclosure state.
     public internal(set) var contentID = UUID()
 
@@ -114,14 +114,18 @@ public final class TimelineModel {
     #endif
     @ObservationIgnored private var journey: HistoryJourney?
     @ObservationIgnored private var operation: Task<Void, Never>?
+    /// Identifies the task that owns `busy`, so a stopped or stale task cannot end a newer one.
+    @ObservationIgnored private var operationID: UUID?
     @ObservationIgnored private var generation = UUID()
     /// Observed: the composer swaps Send for Stop on `isAnswering`.
     private var activeAnswerID: UUID?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var unlocked = false
-    @ObservationIgnored var visits: [Visit] = []
+    /// Observed: `canExport` reads it.
+    var visits: [Visit] = []
 
     static let photosClosed = "Photos are closed. Read activity when you choose."
+    static let screenshotsClosed = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
     public static let appleModelName = AppleFoundation.displayName
 
     public init(
@@ -173,7 +177,7 @@ public final class TimelineModel {
 
     public func lockAndClear() {
         generation = UUID()
-        operation?.cancel(); operation = nil
+        operation?.cancel(); operation = nil; operationID = nil
         unlocked = false; busy = false
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; screenshots = []; turns = []; input = ""
@@ -185,6 +189,7 @@ public final class TimelineModel {
         Task { await oldJourney?.clear() }
         connectedAssistant.lockAndClear()
         photoStatus = Self.photosClosed
+        screenshotStatus = Self.screenshotsClosed
         status = "Locked. Cached history, photo activity, screenshots and answers cleared."
         contentID = UUID()
         #if DEBUG
@@ -203,8 +208,9 @@ public final class TimelineModel {
         let token = generation
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
         busy = true
+        let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation { busy = false } }
+            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             do {
                 // Authentication precedes even the Photos permission prompt.
                 let result = await authenticator.unlock(reason: "read your local photo activity", graceMinutes: 0)
@@ -231,8 +237,11 @@ public final class TimelineModel {
 
     /// Reads one screenshot the person picked. Only scrubbed text is kept; the image is not.
     public func addScreenshot(data: Data, name: String) {
-        let token = generation
         screenshotStatus = "Reading the screenshot on this device…"
+        read(data, name: name, token: generation)
+    }
+
+    private func read(_ data: Data, name: String, token: UUID) {
         let reader = screenshotReader
         Task { @MainActor in
             do {
@@ -246,6 +255,16 @@ public final class TimelineModel {
                 guard token == generation else { return }
                 screenshotStatus = "That image could not be read."
             }
+        }
+    }
+
+    /// Loads picked image data, then reads it. A lock while loading drops the result.
+    public func addScreenshot(name: String, load: @escaping @Sendable () async -> Data?) {
+        let token = generation
+        screenshotStatus = "Reading the screenshot on this device…"
+        Task { @MainActor in
+            guard let data = await load(), token == generation else { return }
+            read(data, name: name, token: token)
         }
     }
 
@@ -348,8 +367,9 @@ public final class TimelineModel {
         guard canReadHistory else { return }
         let token = generation
         busy = true
+        let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation { busy = false } }
+            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             movements = []; threads = []; travel = []; themes = []; visits = []
             sites = []; trackerSignals = []; historyLoaded = false; turns = []; journeyReceipt = nil
             let oldJourney = journey; journey = nil
@@ -399,8 +419,9 @@ public final class TimelineModel {
         guard usingApple, let session = journey else { return }
         let token = generation
         busy = true
+        let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation { busy = false } }
+            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             do {
                 let result = try await session.recommend("Explore this selected trail and suggest useful follow-up questions.", focus: focus)
                 guard token == generation, !Task.isCancelled else { return }
@@ -444,9 +465,11 @@ public final class TimelineModel {
         activeAnswerID = turn.id
         let token = generation
         busy = true
+        let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation { busy = false } }
-            if canReadHistory {
+            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
+            // Before history is read, a Mac with photos or screenshots asks the timeline instead.
+            if canReadHistory, historyLoaded || timelineEvidence.isEmpty {
                 await answerFromHistory(q, turnID: turn.id, token: token)
             } else {
                 await answerFromTimeline(q, turnID: turn.id, token: token)
@@ -458,7 +481,7 @@ public final class TimelineModel {
     public func stopAnswer() {
         guard let id = activeAnswerID else { return }
         activeAnswerID = nil
-        operation?.cancel(); operation = nil
+        operation?.cancel(); operation = nil; operationID = nil
         busy = false
         if let index = turns.firstIndex(where: { $0.id == id }) {
             if turns[index].answer == "Preparing evidence…" { turns[index].answer = "" }

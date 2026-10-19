@@ -1,3 +1,5 @@
+// Uses Debug-only sample data (DemoData, demoMode).
+#if DEBUG
 import Foundation
 import Observation
 import Testing
@@ -40,6 +42,29 @@ private final class Flag: @unchecked Sendable {
     var value: Bool { lock.lock(); defer { lock.unlock() }; return raised }
 }
 
+/// Holds callers until `open()`; lets a test pause a source mid-read.
+private actor Gate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters = []
+    }
+}
+
+private struct GatedPhotos: PhotoLibraryReading {
+    let gate: Gate
+    func records(since: Date, limit: Int) async throws -> [PhotoRecord] {
+        await gate.wait()
+        return [PhotoRecord(time: Date(), isScreenshot: false, labels: [])]
+    }
+}
+
 @MainActor
 private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
     let deadline = ContinuousClock.now + .seconds(5)
@@ -57,8 +82,9 @@ struct TimelineModelTests {
                       timelineAnswerer: answerer, appleIntelligenceReady: { false })
     }
 
-    @Test func lockClearsEvidenceAndAnswersAndCanReloadOnlyFictionalData() {
-        let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
+    @Test func lockClearsEvidenceAndAnswersAndCanReloadOnlyFictionalData() async throws {
+        let model = TimelineModel(history: DemoHistorySource(), screenshotReader: ScreenshotReader { _ in ["Receipt"] },
+                                  authenticator: AlwaysUnlocked(),
                                   timelineAnswerer: ScriptedAnswerer(updates: []),
                                   appleIntelligenceReady: { false })
         model.demoMode = true
@@ -75,6 +101,8 @@ struct TimelineModelTests {
         #expect(!model.sites.isEmpty)
         model.selectFocus(.travel)
         #expect(model.historyFocus == .travel)
+        model.addScreenshot(data: Data([0x1]), name: "Receipt")
+        try await waitUntil { model.screenshots.count == 1 }
         let beforeLock = model.contentID
         model.lockAndClear()
         #expect(model.contentID != beforeLock)
@@ -148,6 +176,75 @@ struct TimelineModelTests {
         #expect(changed.value)
     }
 
+    @Test func staleStoppedTaskDoesNotClearBusyForTheNextRead() async throws {
+        let gate = Gate()
+        let model = TimelineModel(history: nil, photos: GatedPhotos(gate: gate), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: [
+                                      TimelineAnswerProgress(text: "Partial", source: .model),
+                                  ], hangs: true),
+                                  appleIntelligenceReady: { false })
+        model.input = "What happened?"
+        model.ask()
+        try await waitUntil { model.turns.first?.answer == "Partial" }
+        model.stopAnswer()
+        model.readPhotos()
+        #expect(model.busy)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.busy, "the stopped answer's task must not end the photo read's busy state")
+        await gate.open()
+        try await waitUntil { !model.busy }
+        #expect(model.photoEvents.count == 1)
+    }
+
+    @Test func screenshotFinishingAfterALockIsDropped() async throws {
+        let gate = Gate()
+        let reader = ScreenshotReader { _ in ["Receipt"] }
+        let model = TimelineModel(history: nil, photos: NoPhotos(), screenshotReader: reader,
+                                  authenticator: AlwaysUnlocked(), timelineAnswerer: ScriptedAnswerer(updates: []),
+                                  appleIntelligenceReady: { false })
+        let closedStatus = model.screenshotStatus
+        model.addScreenshot(name: "Receipt") {
+            await gate.wait()
+            return Data([0x1])
+        }
+        model.lockAndClear()
+        await gate.open()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.screenshots.isEmpty)
+        #expect(model.screenshotStatus == closedStatus)
+    }
+
+    @Test func lockResetsTheScreenshotStatus() async throws {
+        let reader = ScreenshotReader { _ in ["Receipt", "guest@example.com"] }
+        let model = TimelineModel(history: nil, photos: NoPhotos(), screenshotReader: reader,
+                                  authenticator: AlwaysUnlocked(), timelineAnswerer: ScriptedAnswerer(updates: []),
+                                  appleIntelligenceReady: { false })
+        let closedStatus = model.screenshotStatus
+        model.addScreenshot(data: Data([0x1]), name: "Receipt")
+        try await waitUntil { model.screenshots.count == 1 }
+        #expect(model.screenshotStatus != closedStatus)
+        model.lockAndClear()
+        #expect(model.screenshotStatus == closedStatus)
+    }
+
+    @Test func macAsksTheTimelineWhenOnlyPhotosOrScreenshotsWereRead() async throws {
+        let reader = ScreenshotReader { _ in ["Booking reference 42"] }
+        let model = TimelineModel(history: DemoHistorySource(), photos: NoPhotos(), screenshotReader: reader,
+                                  authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: [
+                                      TimelineAnswerProgress(text: "One screenshot was added.", toolsUsed: ["added_screenshots"], source: .model),
+                                  ]),
+                                  appleIntelligenceReady: { false })
+        model.addScreenshot(data: Data([0x1]), name: "Booking")
+        try await waitUntil { model.screenshots.count == 1 }
+        model.input = "What did I add?"
+        model.ask()
+        try await waitUntil { model.turns.first?.status == .answered }
+        #expect(model.turns.first?.answer == "One screenshot was added.")
+        #expect(model.turns.first?.toolsUsed == ["added_screenshots"])
+        #expect(model.coverage.isEmpty, "no Safari history was read")
+    }
+
     @Test func factsAnswerCarriesTheReason() async throws {
         let model = phoneModel(ScriptedAnswerer(updates: [
             TimelineAnswerProgress(text: "Nothing has been read yet.",
@@ -199,3 +296,4 @@ struct TimelineModelTests {
         #expect(model.status.hasPrefix("Window changed"))
     }
 }
+#endif

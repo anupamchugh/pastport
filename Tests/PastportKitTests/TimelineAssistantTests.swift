@@ -59,4 +59,29 @@ struct TimelineAssistantTests {
         #expect(empty.deterministicSummary.contains("Safari history is not readable on this device"))
         #expect(empty.countsLine.contains("Safari history not readable on this device"))
     }
+    @Test func failingFinalTextIsReplacedEvenAfterAPassingPartial() {
+        let facts = evidence()
+        // "You took 2 photos on" passed and was shown; the finished text adds an unsupported date.
+        let final = TimelineAnswerPolicy.finalProgress(raw: "You took 2 photos on 5 July.", shown: "You took 2 photos on",
+                                                       toolsUsed: ["photo_activity"], evidence: facts)
+        #expect(final?.text == facts.deterministicSummary)
+        #expect(final?.toolsUsed == ["photo_activity"])
+        guard case .facts = final?.source else { Issue.record("expected the facts fallback"); return }
+    }
+
+    @Test func passingFinalTextIsShownOnce() {
+        let facts = evidence()
+        let same = TimelineAnswerPolicy.finalProgress(raw: "You took 2 photos.", shown: "You took 2 photos.",
+                                                      toolsUsed: [], evidence: facts)
+        #expect(same == nil)
+        let longer = TimelineAnswerPolicy.finalProgress(raw: "You took 2 photos.", shown: "You took",
+                                                        toolsUsed: [], evidence: facts)
+        #expect(longer == TimelineAnswerProgress(text: "You took 2 photos.", source: .model))
+    }
+
+    @Test func emptyFinalTextFallsBackToFacts() {
+        let facts = evidence()
+        let final = TimelineAnswerPolicy.finalProgress(raw: "", shown: "", toolsUsed: [], evidence: facts)
+        #expect(final?.text == facts.deterministicSummary)
+    }
 }

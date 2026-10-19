@@ -55,7 +55,9 @@ public struct TimelineEvidence: Sendable, Equatable {
     public var screenshotLines: [String] {
         guard !screenshots.isEmpty else { return ["added screenshots: none"] }
         return screenshots.enumerated().map { index, shot in
-            let text = shot.evidence.scrubbedLines.joined(separator: " / ")
+            // Adding a screenshot is the person's opt-in, so sensitive kinds are allowed here.
+            let text = (shot.evidence.narrationText(allowSensitive: true) ?? "")
+                .replacingOccurrences(of: "\n", with: " / ")
             return "added screenshots: #\(index + 1) \(shot.evidence.kind.rawValue), "
                 + "\(shot.evidence.redactionCount) redactions: " + String(text.prefix(600))
         }
@@ -114,6 +116,18 @@ public enum TimelineAnswerPolicy {
         HistoryJourneyValidation.allowsNarrative(text, evidenceLines: evidence.lines)
     }
 
+    /// What to send after the stream ends, given the model's finished text and what was shown.
+    public static func finalProgress(raw: String, shown: String, toolsUsed: [String],
+                                     evidence: TimelineEvidence) -> TimelineAnswerProgress? {
+        let finished = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Each streamed partial was checked on its own; the finished text decides what stays.
+        guard !finished.isEmpty, allows(finished, evidence: evidence) else {
+            return TimelineAnswerProgress(text: evidence.deterministicSummary, toolsUsed: toolsUsed,
+                                          source: .facts(reason: "The model's answer did not match the recorded facts."))
+        }
+        return finished == shown ? nil : TimelineAnswerProgress(text: finished, toolsUsed: toolsUsed, source: .model)
+    }
+
     static let instructions = """
     You answer questions about the person's own recent timeline on this device.
     Use the tools to read the facts. Use only numbers and dates that a tool returned.
@@ -151,20 +165,20 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
                     ],
                     instructions: TimelineAnswerPolicy.instructions
                 )
-                var last = ""
+                var shown = ""
+                var raw = ""
                 do {
                     for try await snapshot in session.streamResponse(to: question, generating: TimelineAnswerPayload.self) {
                         try Task.checkCancellation()
-                        guard let text = snapshot.content.answer, text != last,
-                              TimelineAnswerPolicy.allows(text, evidence: evidence) else { continue }
-                        last = text
+                        guard let text = snapshot.content.answer else { continue }
+                        raw = text
+                        guard text != shown, TimelineAnswerPolicy.allows(text, evidence: evidence) else { continue }
+                        shown = text
                         continuation.yield(TimelineAnswerProgress(text: text, toolsUsed: log.names, source: .model))
                     }
-                    if last.isEmpty {
-                        continuation.yield(TimelineAnswerProgress(
-                            text: evidence.deterministicSummary, toolsUsed: log.names,
-                            source: .facts(reason: "The model's answer did not match the recorded facts.")
-                        ))
+                    if let final = TimelineAnswerPolicy.finalProgress(raw: raw, shown: shown, toolsUsed: log.names,
+                                                                      evidence: evidence) {
+                        continuation.yield(final)
                     }
                     continuation.finish()
                 } catch is CancellationError {

@@ -152,9 +152,8 @@ public struct ScreenshotsSection: View {
         .onChange(of: selection) { _, item in
             guard let item else { return }
             selection = nil
-            Task { @MainActor in
-                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                model.addScreenshot(data: data, name: "Screenshot \(model.screenshots.count + 1)")
+            model.addScreenshot(name: "Screenshot \(model.screenshots.count + 1)") {
+                try? await item.loadTransferable(type: Data.self)
             }
         }
     }

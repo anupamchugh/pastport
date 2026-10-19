@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 struct BarView: View {
     @Bindable var m: TimelineModel
     @State private var exporting = false
+    @State private var exportDocument: ExperimentDocument?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,10 +23,12 @@ struct BarView: View {
         .onAppear { m.start() }
         .fileExporter(
             isPresented: $exporting,
-            document: m.experimentData().map(ExperimentDocument.init(data:)),
+            document: exportDocument,
             contentType: .json,
             defaultFilename: "Pastport-experiment.json"
-        ) { m.exportFinished($0) }
+        ) { m.exportFinished($0); exportDocument = nil }
+        // A lock while the save panel is open cancels the export.
+        .onChange(of: m.contentID) { exporting = false; exportDocument = nil }
     }
 
     private var header: some View {
@@ -98,7 +101,10 @@ struct BarView: View {
         HStack {
             Button("Lock & clear", systemImage: "lock.fill") { m.lockAndClear() }
                 .controlSize(.small)
-            Button("Export to Foundation Lab") { exporting = true }
+            Button("Export to Foundation Lab") {
+                exportDocument = m.experimentData().map(ExperimentDocument.init(data:))
+                exporting = exportDocument != nil
+            }
                 .controlSize(.small).disabled(!m.canExport)
                 .help("Exports category counts and date coverage only. No URLs, titles, searches, locations or answers. The file remains after Lock & clear.")
             Spacer()
