@@ -56,7 +56,7 @@ public struct AskEvalFixture: Sendable {
         add(june(12), "stay.example", "Booking confirmed — Seaside Hotel", "/booking/confirmation")
         add(june(14), "flights.example", "Your itinerary", "/itinerary/seaside-trip")
         add(day(-30, hour: 11), "airbnb.example", "Leaving Airbnb",
-            "/interstitial?r=https%3A%2F%2Fmaps.example%2F%3Fq%3D18%2BRue%2BDemo%252C%2B5th%2BArrondissement%252C%2BParis%252C%2BFrance%26ll%3D48.8566%252C2.3522")
+            "/interstitial?r=https%3A%2F%2Fmaps.example%2F%3Fq%3D18%2BRue%2BExemple%252C%2B5th%2BArrondissement%252C%2BParis%252C%2BFrance%26ll%3D48.8566%252C2.3522")
         visits = v
 
         func count(_ pred: (Visit) -> Bool) -> Int { v.filter(pred).count }
