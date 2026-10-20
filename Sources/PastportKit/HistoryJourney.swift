@@ -127,7 +127,7 @@ public actor HistoryJourney {
         let runtime = try await runtimeForCurrentSession()
         turn += 1
         let effectiveFocus = focus ?? HistoryJourneyValidation.followUpFocus(for: prompt, previous: lastFocus) ?? .overview
-        lastFocus = effectiveFocus ?? JourneyEvidence.inferredFocus(for: prompt, visits: visits)
+        lastFocus = effectiveFocus
         let result = try await runtime.recommend(
             prompt: prompt,
             focus: effectiveFocus,

@@ -115,7 +115,7 @@ public struct PhotoActivitySection: View {
             ForEach(Array(model.photoEvents.enumerated()), id: \.offset) { _, event in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(event.start.formatted(date: .abbreviated, time: .omitted)).font(.caption.weight(.semibold))
-                    Text("\(event.photoCount) photos · \(event.screenshotCount) screenshots").font(.caption)
+                    Text("^[\(event.photoCount) photo](inflect: true) · ^[\(event.screenshotCount) screenshot](inflect: true)").font(.caption)
                     if !event.labels.isEmpty {
                         Text("Scene labels: " + event.labels.prefix(5).joined(separator: ", ")).font(.caption2)
                             .foregroundStyle(.secondary)
