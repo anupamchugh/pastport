@@ -13,6 +13,21 @@ extension TimelineModel {
         return status
     }
 
+    /// Pages in the read history whose title or address contains every word, newest first.
+    public func search(_ text: String, limit: Int = 40) -> [Visit] {
+        let words = text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        guard !words.isEmpty else { return [] }
+        var seen = Set<String>()
+        var found: [Visit] = []
+        for visit in visits.sorted(by: { $0.time > $1.time }) {
+            let haystack = (visit.title + " " + visit.cleanURL).lowercased()
+            guard words.allSatisfy({ haystack.contains($0) }), seen.insert(visit.cleanURL).inserted else { continue }
+            found.append(visit)
+            if found.count == limit { break }
+        }
+        return found
+    }
+
     /// Research topics that are safe to name on screen. Sensitive topics stay behind authentication.
     public var nameableThreads: [IntentThread] { threads.filter { !$0.isSensitive } }
 
@@ -20,11 +35,11 @@ extension TimelineModel {
     public var starterQuestions: [String] {
         var starters: [String] = []
         if historyLoaded {
-            if !travel.isEmpty { starters.append("How many booking pages did I visit?") }
-            if !movements.isEmpty { starters.append("Which places appear in my history?") }
             if !sites.isEmpty { starters.append("Which sites do I visit most?") }
             starters.append("How many pages did I visit yesterday?")
             if !nameableThreads.isEmpty { starters.append("What was I researching?") }
+            if !movements.isEmpty { starters.append("Which places appear in my history?") }
+            if !travel.isEmpty { starters.append("How many booking pages did I visit?") }
         } else {
             if !photoEvents.isEmpty { starters.append("What does my photo activity show?") }
             if !screenshots.isEmpty { starters.append("What does my screenshot say?") }
@@ -45,11 +60,54 @@ extension TimelineModel {
         public var id: HistoryFocus { focus }
     }
 
-    /// The findings that have something to show, in the order a person cares about.
+    /// The findings that have something to show. General jobs come first; trips are one card among them.
     public var focusCards: [FocusCard] {
         var cards: [FocusCard] = []
         func inflected(_ text: AttributedString) -> String { String(text.characters) }
         func day(_ d: Date) -> String { d.formatted(.dateTime.month(.abbreviated).day()) }
+
+        // What you have been into: research topics, and the sites you used most this week.
+        let weekStart = Date().addingTimeInterval(-7 * 86_400)
+        var weekCounts: [String: Int] = [:]
+        for visit in visits where visit.time >= weekStart { weekCounts[visit.host, default: 0] += 1 }
+        let weekRanked = weekCounts.sorted { a, b in a.value != b.value ? a.value > b.value : a.key < b.key }
+        let weekHosts: [String] = weekRanked.prefix(3).map { $0.key }
+        // A sensitive topic shows neither its name nor its count.
+        let named = nameableThreads
+        var topic: String?
+        if let first = named.first { topic = ([first.term] + first.related).joined(separator: ", ").capitalized }
+        if topic != nil || !sites.isEmpty {
+            var detailParts: [String] = []
+            if named.count > 1 {
+                let extra = named.count - 1
+                detailParts.append(inflected(AttributedString(localized: "^[\(extra) more topic](inflect: true)")))
+            }
+            let usingWeek = !weekHosts.isEmpty
+            let hosts: [String] = usingWeek ? weekHosts : sites.prefix(3).map { $0.host }
+            if !hosts.isEmpty {
+                detailParts.append((usingWeek ? "This week: " : "Most visited: ") + hosts.joined(separator: ", "))
+            }
+            let headline: String = topic ?? (sites.first?.host ?? "")
+            cards.append(FocusCard(
+                focus: .research, title: "What you've been into", headline: headline,
+                detail: detailParts.joined(separator: " · "), symbol: "sparkles", tint: .teal))
+        }
+
+        // Privacy check: trackers, and links that carry a location.
+        let t = trackerSignals.count, m = movements.count
+        let privacyHeadline: String
+        if t == 0 && m == 0 {
+            privacyHeadline = "Nothing concerning found"
+        } else {
+            let trackers = inflected(AttributedString(localized: "^[\(t) tracker](inflect: true)"))
+            let links = inflected(AttributedString(localized: "^[\(m) link](inflect: true) with a location"))
+            privacyHeadline = [t > 0 ? trackers : nil, m > 0 ? links : nil].compactMap { $0 }.joined(separator: ", ")
+        }
+        cards.append(FocusCard(
+            focus: .privacy, title: "Privacy check", headline: privacyHeadline,
+            detail: "Trackers follow a click between sites. A map link in your history does not mean you went there.",
+            symbol: "hand.raised", tint: .purple))
+
         if !travel.isEmpty {
             let latest = travel.max { $0.time < $1.time }
             let n = travel.count
@@ -58,41 +116,6 @@ extension TimelineModel {
                 headline: inflected(AttributedString(localized: "^[\(n) booking page](inflect: true)")),
                 detail: latest.map { "Latest: " + ($0.title.isEmpty ? Bookings.name(for: $0.host) : $0.title) + ", " + day($0.time) } ?? "",
                 symbol: "airplane", tint: .orange))
-        }
-        let places = Array(NSOrderedSet(array: movements.compactMap(\.place))) as? [String] ?? []
-        if !places.isEmpty {
-            cards.append(FocusCard(
-                focus: .places, title: "Places",
-                headline: places.prefix(2).joined(separator: ", ") + (places.count > 2 ? " and \(places.count - 2) more" : ""),
-                detail: "From map links in your history. A link does not mean you went there.",
-                symbol: "mappin.and.ellipse", tint: .red))
-        }
-        // Only topics that are safe to show. A sensitive topic shows neither its name nor its count.
-        let named = nameableThreads
-        if let first = named.first {
-            let n = named.count
-            cards.append(FocusCard(
-                focus: .research, title: "What you looked into",
-                headline: ([first.term] + first.related).joined(separator: ", ").capitalized,
-                detail: n > 1 ? inflected(AttributedString(localized: "^[\(n) topic](inflect: true) in all")) : "",
-                symbol: "magnifyingglass", tint: .teal))
-        }
-        if let top = sites.first {
-            cards.append(FocusCard(
-                focus: .overview, title: "Most visited",
-                headline: top.host,
-                detail: sites.dropFirst().isEmpty
-                    ? "\(top.visits) visits"
-                    : "\(top.visits) visits, then " + sites.dropFirst().prefix(2).map(\.host).joined(separator: ", "),
-                symbol: "safari", tint: .blue))
-        }
-        if !trackerSignals.isEmpty {
-            let n = trackerSignals.count
-            cards.append(FocusCard(
-                focus: .privacy, title: "Trackers",
-                headline: inflected(AttributedString(localized: "^[\(n) tracking pattern](inflect: true)")),
-                detail: "Links that can follow a click from one site to another.",
-                symbol: "eye.slash", tint: .purple))
         }
         return cards
     }

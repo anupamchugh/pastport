@@ -331,3 +331,31 @@ struct TimelineModelTests {
     }
 }
 #endif
+
+@Suite("Home search and card order")
+@MainActor
+struct HomeSearchTests {
+    private func demoModel() -> TimelineModel {
+        let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.demoMode = true
+        model.start()
+        return model
+    }
+
+    @Test func searchFindsPagesByEveryWordNewestFirst() {
+        let model = demoModel()
+        let found = model.search("food guide")
+        #expect(found.count == 2)
+        #expect(found.first?.time ?? .distantPast >= found.last?.time ?? .distantFuture)
+        #expect(model.search("food zzzz").isEmpty)
+        #expect(model.search("   ").isEmpty)
+    }
+
+    @Test func generalJobsComeBeforeTripsOnTheHomeScreen() {
+        let order = demoModel().focusCards.map(\.focus)
+        #expect(order.first == .research)
+        #expect(order.contains(.privacy))
+        #expect(order.last == .travel)
+    }
+}

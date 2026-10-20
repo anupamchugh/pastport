@@ -9,7 +9,7 @@ public struct WelcomeView: View {
 
     private var sentence: LocalizedStringKey {
         model.canReadHistory
-            ? "Find the trips, bookings and places hiding in your Safari history, privately on your Mac."
+            ? "Find anything you have seen before. Search your Safari history in plain words, privately on your Mac."
             : "Turn your photos and screenshots into a private timeline, then ask it questions."
     }
 
@@ -65,8 +65,18 @@ public struct WelcomeView: View {
 public struct HomeView: View {
     let model: TimelineModel
     @State private var detail: HistoryFocus?
+    @State private var query = HomeView.initialQuery
 
     public init(model: TimelineModel) { self.model = model }
+
+    /// Debug builds only: `--search <words>` opens Home with a search typed, for screenshots.
+    private static var initialQuery: String {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let i = arguments.firstIndex(of: "--search"), arguments.indices.contains(i + 1) { return arguments[i + 1] }
+        #endif
+        return ""
+    }
 
     public var body: some View {
         if !model.hasContent {
@@ -87,24 +97,27 @@ public struct HomeView: View {
     private var findings: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("What I found").font(.title2.bold())
+                Text("Home").font(.title2.bold())
                 Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise") { model.loadTrail() }
                     .labelStyle(.iconOnly).buttonStyle(.borderless).disabled(model.busy)
                     .help("Read your history again")
             }
-            ForEach(model.focusCards) { card in
-                Button { detail = card.focus } label: { FindingCard(card: card) }
-                    .buttonStyle(.plain).disabled(model.busy)
-            }
-            DisclosureGroup("Photos and screenshots") {
-                VStack(alignment: .leading, spacing: 14) {
-                    PhotoActivitySection(model: model)
-                    ScreenshotsSection(model: model)
-                }.padding(.top, 8)
-            }
-            if !model.coverage.isEmpty {
-                Text(model.coverage).font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+            HistorySearch(model: model, query: $query)
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                ForEach(model.focusCards) { card in
+                    Button { detail = card.focus } label: { FindingCard(card: card) }
+                        .buttonStyle(.plain).disabled(model.busy)
+                }
+                DisclosureGroup("Photos and screenshots") {
+                    VStack(alignment: .leading, spacing: 14) {
+                        PhotoActivitySection(model: model)
+                        ScreenshotsSection(model: model)
+                    }.padding(.top, 8)
+                }
+                if !model.coverage.isEmpty {
+                    Text(model.coverage).font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+                }
             }
         }
     }
@@ -215,7 +228,20 @@ struct FindingDetail: View {
             VStack(alignment: .leading, spacing: 12) {
                 Button(action: back) { Label("What I found", systemImage: "chevron.backward") }
                     .buttonStyle(.borderless)
-                SelectedEvidence(model: model, focus: focus)
+                switch focus {
+                case .research:
+                    SelectedEvidence(model: model, focus: .research)
+                    Divider().padding(.vertical, 4)
+                    SelectedEvidence(model: model, focus: .overview)
+                case .privacy:
+                    SelectedEvidence(model: model, focus: .privacy)
+                    if !model.movements.isEmpty {
+                        Divider().padding(.vertical, 4)
+                        SelectedEvidence(model: model, focus: .places)
+                    }
+                default:
+                    SelectedEvidence(model: model, focus: focus)
+                }
                 let starters = model.questions(for: focus)
                 if !starters.isEmpty {
                     Divider().padding(.vertical, 4)
@@ -228,6 +254,51 @@ struct FindingDetail: View {
                     }
                 }
             }.padding(16)
+        }
+    }
+}
+
+/// "Find it again": search the history that was read, in plain words.
+struct HistorySearch: View {
+    let model: TimelineModel
+    @Binding var query: String
+
+    private var results: [Visit] { model.search(query) }
+    private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+                TextField("Find a page you have seen before", text: $query)
+                    .textFieldStyle(.plain)
+                if searching {
+                    Button("Clear", systemImage: "xmark.circle.fill") { query = "" }
+                        .labelStyle(.iconOnly).buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            if searching {
+                if results.isEmpty {
+                    Text("No page in your history matches \u{201C}\(query)\u{201D}.")
+                        .font(.callout).foregroundStyle(.secondary).padding(.top, 4)
+                } else {
+                    ForEach(results) { visit in
+                        if let url = URL(string: visit.url) {
+                            Link(destination: url) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(visit.title.isEmpty ? visit.host : visit.title).font(.callout.weight(.medium)).lineLimit(2)
+                                    Text(visit.host + " · " + visit.time.formatted(.dateTime.month(.abbreviated).day().year()))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
         }
     }
 }

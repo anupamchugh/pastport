@@ -9,7 +9,7 @@ struct SelectedEvidence: View {
     var body: some View {
         switch focus {
         case .overview:
-            Text("Most visited").font(.title3.bold())
+            Text("Sites you use most").font(.title3.bold())
             Text("Counts are page visits, not time spent.").font(.caption).foregroundStyle(.secondary)
             FlowChips(items: model.themes.map { "\($0.name) · \($0.visits)" })
             ForEach(model.sites) { site in
@@ -38,8 +38,8 @@ struct SelectedEvidence: View {
             }
             if model.trackerSignals.isEmpty { Text("No tracking parameter or redirect pattern was found in this window.").font(.callout) }
         case .places:
-            Text("Places").font(.title3.bold())
-            Text("Places named in map links you opened. A link does not mean you went there.").font(.caption).foregroundStyle(.secondary)
+            Text("Links that carry a location").font(.title3.bold())
+            Text("Map links you opened. A link does not mean you went there.").font(.caption).foregroundStyle(.secondary)
             ForEach(model.movements.prefix(24)) { MovementCard(leak: $0) }
         }
     }
