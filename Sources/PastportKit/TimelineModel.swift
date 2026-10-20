@@ -519,6 +519,12 @@ public final class TimelineModel {
             update(turnID) { $0.answer = "No history in this window to answer from."; $0.status = .failed }
             return
         }
+        if let direct = HistoryFacts.answer(question: q, visits: visits) {
+            activeAnswerID = nil
+            update(turnID) { $0.answer = direct.text; $0.status = .answered; $0.note = "Counted from your history on this device" }
+            status = "Answer ready"
+            return
+        }
         do {
             if usingApple {
                 let session: HistoryJourney

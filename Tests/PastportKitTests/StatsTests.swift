@@ -22,3 +22,14 @@ struct StatsTests {
         #expect(stats.topHosts.first?.visits == 2)
     }
 }
+
+@Suite("Top sites order")
+struct TopSitesOrderTests {
+    @Test func equalCountsAreOrderedByHostSoTheListIsStable() {
+        let t = Date(timeIntervalSince1970: 1_751_328_000)
+        let visits = ["c.example", "b.example", "a.example"].map { Visit(time: t, title: "x", url: "https://\($0)/") }
+        for _ in 0..<20 {
+            #expect(Stats.compute(from: visits).topHosts.map(\.host) == ["a.example", "b.example", "c.example"])
+        }
+    }
+}

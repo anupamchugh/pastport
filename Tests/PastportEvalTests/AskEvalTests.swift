@@ -17,7 +17,7 @@ struct AskEvalTests {
     @Test func fixtureHostCountsHaveNoTiesInTheTopThree() {
         let counts = Dictionary(grouping: fixture.visits, by: \.host).mapValues(\.count)
         let top = counts.values.sorted(by: >)
-        #expect(Array(top.prefix(4)) == [9, 6, 4, 3])
+        #expect(Array(top.prefix(4)) == [9, 6, 5, 4])
     }
 
     @Test func juneHasExactlyTwoBookingLikePagesAndParisIsTheOnlyPlace() {
@@ -27,9 +27,14 @@ struct AskEvalTests {
         #expect(Movements.scan(from: fixture.visits).compactMap(\.place).allSatisfy { $0.localizedCaseInsensitiveContains("paris") })
     }
 
+    @Test func theKyotoSearchesFormOneResearchThread() {
+        let threads = Threads.scan(from: fixture.visits)
+        #expect(threads.contains { $0.term == "kyoto" })
+    }
+
     @Test func aCorrectAnswerPassesAndAWrongOneFails() throws {
         let q = try #require(fixture.questions.first { $0.id == "top-sites" })
-        let good = AskEval.score(q, answer: "Your top sites are wiki.example (9), news.example (6) and shop.example (4).", corpus: fixture.corpus)
+        let good = AskEval.score(q, answer: "Your top sites are wiki.example (9), news.example (6) and shop.example (5).", corpus: fixture.corpus)
         #expect(good.correct)
         #expect(good.invented.isEmpty)
         let bad = AskEval.score(q, answer: "Mostly recipes.example and wiki.example.", corpus: fixture.corpus)

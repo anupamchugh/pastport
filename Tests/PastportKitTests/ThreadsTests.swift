@@ -1,4 +1,5 @@
 import XCTest
+import Testing
 @testable import PastportKit
 
 final class ThreadsTests: XCTestCase {
@@ -182,5 +183,14 @@ final class ThreadsTests: XCTestCase {
         for (title, expected) in cases {
             XCTAssertEqual(Threads.query(fromTitle: title), expected, "for title: \(title)")
         }
+    }
+}
+
+@Suite("Search titles without an engine name")
+struct BareSearchTitleTests {
+    @Test func aBareSearchSuffixIsAQuery() {
+        #expect(Threads.query(fromTitle: "kyoto temples - Search") == "kyoto temples")
+        #expect(Threads.query(fromTitle: "kyoto temples - Google Search") == "kyoto temples")
+        #expect(Threads.query(fromTitle: "Search") == nil)
     }
 }

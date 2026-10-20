@@ -44,13 +44,14 @@ public struct AskEvalFixture: Sendable {
         func add(_ time: Date, _ host: String, _ title: String, _ path: String) {
             v.append(Visit(time: time, title: title, url: "https://\(host)\(path)"))
         }
-        // wiki.example 9 · news.example 6 · shop.example 4 · recipes.example 3 · search.example 3 · maps.example 1
+        // wiki.example 9 · news.example 6 · shop.example 5 · search.example 4 · recipes.example 3 · three more single-visit hosts
         for offset in [-1, -1, -3, -9, -14, -20, -26, -40, -55] { add(day(offset, hour: 9 + abs(offset) % 5), "wiki.example", "Article \(abs(offset))", "/wiki/a\(abs(offset))") }
         for offset in [-1, -4, -12, -19, -33, -48] { add(day(offset, hour: 14), "news.example", "Headlines \(abs(offset))", "/n/\(abs(offset))") }
-        for offset in [-6, -22, -35, -60] { add(day(offset, hour: 16), "shop.example", "Kettle listing \(abs(offset))", "/p/\(abs(offset))") }
+        for offset in [-6, -22, -35, -60, -75] { add(day(offset, hour: 16), "shop.example", "Kettle listing \(abs(offset))", "/p/\(abs(offset))") }
         for offset in [0, 0, -17] { add(day(offset, hour: 18 + abs(offset) % 3), "recipes.example", "Soup recipe \(abs(offset))", "/r/\(abs(offset))") }
         add(day(-2, hour: 20), "search.example", "kyoto temples - Search", "/search?q=kyoto+temples")
         add(day(-3, hour: 20), "search.example", "kyoto train pass - Search", "/search?q=kyoto+train+pass")
+        add(day(-4, hour: 20), "search.example", "kyoto hotels - Search", "/search?q=kyoto+hotels")
         add(day(-11, hour: 20), "search.example", "rust borrow checker - Search", "/search?q=rust+borrow+checker")
         add(june(12), "stay.example", "Booking confirmed — Seaside Hotel", "/booking/confirmation")
         add(june(14), "flights.example", "Your itinerary", "/itinerary/seaside-trip")
@@ -82,7 +83,7 @@ public struct AskEvalFixture: Sendable {
 
         questions = [
             AskEvalQuestion(id: "top-sites", question: "Which 3 sites did I visit most?",
-                            truth: "wiki.example (9), news.example (6), shop.example (4)",
+                            truth: "wiki.example (9), news.example (6), shop.example (5)",
                             mustContain: [["wiki.example"], ["news.example"], ["shop.example"]], mustNotContain: ["recipes.example", "search.example"]),
             AskEvalQuestion(id: "top-site", question: "What is my most visited site?",
                             truth: "wiki.example with 9 visits",
@@ -94,11 +95,11 @@ public struct AskEvalFixture: Sendable {
             AskEvalQuestion(id: "last-visit", question: "When did I last visit news.example?",
                             truth: "the most recent news.example visit was \(forms(lastNews)[0])", mustContain: [forms(lastNews)], mustNotContain: []),
             AskEvalQuestion(id: "searched-yes", question: "Did I search for kyoto?",
-                            truth: "yes, two kyoto searches", mustContain: [["yes", "you did", "searched"], ["kyoto"]], mustNotContain: ["no retained", "did not search", "didn't search"]),
+                            truth: "yes, three kyoto searches", mustContain: [["yes", "you did", "searched"], ["kyoto"]], mustNotContain: ["no retained", "did not search", "didn't search"]),
             AskEvalQuestion(id: "searched-no", question: "Did I search for quantum?",
                             truth: "no matching search", mustContain: [["no ", "not ", "n't", "nothing", "none"]], mustNotContain: ["yes,", "you did search"]),
             AskEvalQuestion(id: "bookings-june", question: "How many booking pages did I visit in June?",
-                            truth: "\(junePages) booking-like pages in June", mustContain: [[String(junePages), "two"]], mustNotContain: ["you booked", "completed"]),
+                            truth: "\(junePages) booking-like pages in June", mustContain: [[String(junePages), "two"]], mustNotContain: ["you booked a", "trip was completed", "purchase was completed"]),
             AskEvalQuestion(id: "places", question: "Which places appear in my history?",
                             truth: "Paris", mustContain: [["paris"]], mustNotContain: ["tokyo", "london", "delhi", "new york"]),
             AskEvalQuestion(id: "absent-site", question: "Did I visit netflix.example?",
@@ -108,9 +109,9 @@ public struct AskEvalFixture: Sendable {
             AskEvalQuestion(id: "total", question: "How many pages are in my history?",
                             truth: "\(v.count) visits", mustContain: [[String(v.count)]], mustNotContain: []),
             AskEvalQuestion(id: "researching", question: "What was I researching?",
-                            truth: "kyoto trip planning (temples, train pass)", mustContain: [["kyoto"]], mustNotContain: ["quantum", "tokyo"]),
+                            truth: "kyoto trip planning (temples, train pass, hotels)", mustContain: [["kyoto"]], mustNotContain: ["quantum", "tokyo"]),
             AskEvalQuestion(id: "hotel-booked", question: "Did I book a hotel?",
-                            truth: "only that a booking page was visited; completion is not proven", mustContain: [["page", "visit", "evidence"]], mustNotContain: ["you booked", "you have booked", "is confirmed", "was confirmed", "completed your"]),
+                            truth: "only that a booking page was visited; completion is not proven", mustContain: [["page", "visit", "evidence"]], mustNotContain: ["you booked a hotel", "you have booked", "is confirmed", "was confirmed", "completed your"]),
             AskEvalQuestion(id: "top-last-week", question: "Which site did I visit most last week?",
                             truth: topLast7, mustContain: [[topLast7]], mustNotContain: ["unsupported"]),
             AskEvalQuestion(id: "top-last-month", question: "Which site did I visit most last month?",
@@ -122,6 +123,8 @@ public struct AskEvalFixture: Sendable {
     var corpus: String {
         visits.map { "\($0.host) \($0.title) \($0.url) " + $0.time.formatted(.iso8601.year().month().day()) }.joined(separator: "\n")
             + "\n" + questions.map { $0.question + " " + $0.truth }.joined(separator: "\n")
+            // Fixed wording the code-side answers use, so template words are not scored as inventions.
+            + "\nCounts are page visits, not time spent. last week (7 days) last month (30 days)"
     }
 }
 

@@ -60,7 +60,7 @@ public enum Stats {
         let hours = (0..<24).map { HourStat(hour: $0, visits: hourCounts[$0]) }
         let topHosts = hostCounts
             .map { HostStat(host: $0.key, visits: $0.value) }
-            .sorted { $0.visits > $1.visits }
+            .sorted { $0.visits != $1.visits ? $0.visits > $1.visits : $0.host < $1.host }
             .prefix(topHostLimit)
             .map { $0 }
 

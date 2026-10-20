@@ -64,12 +64,31 @@ public struct HistoryQuestionScope: Sendable {
             requests.append(.during(year))
         }
 
+        let calendar = Calendar(identifier: .gregorian)
+
+        for match in matches(Self.dayPattern, in: query) {
+            guard let word = capture(match, in: query) else { continue }
+            requests.append(.day(word == "today" ? 0 : -1, word))
+        }
+
+        for _ in matches(Self.lastWeekPattern, in: query) {
+            requests.append(.lastDays(7, "last week (7 days)"))
+        }
+
+        for match in matches(Self.monthPattern, in: query) {
+            guard let name = capture(match, in: query), let month = Self.monthNumber(name) else { continue }
+            var year: Int?
+            if match.numberOfRanges > 2, let range = Range(match.range(at: 2), in: query) { year = Int(query[range]) }
+            let resolvedYear = year ?? Self.mostRecentYear(forMonth: month, now: nowDate, calendar: calendar)
+            requests.append(.month(resolvedYear, month))
+        }
+
         if requests.count > 1 {
             return unsupported(visits: visits, reason: "Use one time window per question.")
         }
 
         if requests.isEmpty, hasUnsupportedDatePhrase(query) {
-            return unsupported(visits: visits, reason: "That date phrase is unsupported; use last N days, last month, last year, before YYYY, during YYYY, or in YYYY.")
+            return unsupported(visits: visits, reason: "That date phrase is unsupported; use today, yesterday, last week, last N days, last month, last year, a month name, before YYYY, during YYYY, or in YYYY.")
         }
 
         guard let request = requests.first else {
@@ -84,7 +103,6 @@ public struct HistoryQuestionScope: Sendable {
             )
         }
 
-        let calendar = Calendar(identifier: .gregorian)
         let filtered: [Visit]
         let label: String
         switch request {
@@ -92,6 +110,17 @@ public struct HistoryQuestionScope: Sendable {
             let start = nowDate.addingTimeInterval(-Double(days) * 86_400)
             filtered = visits.filter { $0.time >= start && $0.time <= nowDate }
             label = description
+        case .day(let offset, let word):
+            let today = calendar.startOfDay(for: nowDate)
+            let start = calendar.date(byAdding: .day, value: offset, to: today) ?? today
+            let end = calendar.date(byAdding: .day, value: 1, to: start) ?? nowDate
+            filtered = visits.filter { $0.time >= start && $0.time < end }
+            label = word
+        case .month(let year, let month):
+            let start = calendar.date(from: DateComponents(year: year, month: month, day: 1)) ?? .distantFuture
+            let end = calendar.date(byAdding: .month, value: 1, to: start) ?? .distantFuture
+            filtered = visits.filter { $0.time >= start && $0.time < end }
+            label = "\(Self.monthNames[month - 1].capitalized) \(year)"
         case .before(let year):
             let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? .distantFuture
             filtered = visits.filter { $0.time < start }
@@ -114,6 +143,8 @@ public struct HistoryQuestionScope: Sendable {
 private extension HistoryQuestionScope {
     enum Request {
         case lastDays(Int, String)
+        case day(Int, String)
+        case month(Int, Int)
         case before(Int)
         case during(Int)
     }
@@ -130,6 +161,22 @@ private extension HistoryQuestionScope {
     static let duringYearPattern = try! NSRegularExpression(
         pattern: #"\b(?:during|in)\s+([0-9]{4})\b"#
     )
+    static let dayPattern = try! NSRegularExpression(pattern: #"\b(today|yesterday)\b"#)
+    static let lastWeekPattern = try! NSRegularExpression(pattern: #"\b(?:last|past)\s+week\b"#)
+    static let monthNames = ["january", "february", "march", "april", "may", "june", "july",
+                             "august", "september", "october", "november", "december"]
+    static let monthPattern = try! NSRegularExpression(
+        pattern: #"\b(?:in|during|for|of)\s+(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+((?:19|20)[0-9]{2}))?\b"#
+    )
+    static func monthNumber(_ name: String) -> Int? {
+        monthNames.firstIndex(of: name).map { $0 + 1 }
+    }
+    /// A month named without a year means the latest one that has already started.
+    static func mostRecentYear(forMonth month: Int, now: Date, calendar: Calendar) -> Int {
+        let parts = calendar.dateComponents([.year, .month], from: now)
+        let year = parts.year ?? 2026
+        return month <= (parts.month ?? 12) ? year : year - 1
+    }
     static let yearPattern = try! NSRegularExpression(pattern: #"\b(?:19|20)[0-9]{2}\b"#)
     static let unsupportedLastPattern = try! NSRegularExpression(
         pattern: #"\blast\s+(?:[0-9]+(?:\.[0-9]+)?\s+)?(?:day|days|week|weeks|month|months|year|years)\b"#
@@ -151,7 +198,7 @@ private extension HistoryQuestionScope {
     }
 
     static func hasUnsupportedDatePhrase(_ query: String) -> Bool {
-        if query.range(of: #"\b(?:today|yesterday|tomorrow|last\s+week|last\s+weeks|last\s+months?|last\s+years?)\b"#, options: .regularExpression) != nil {
+        if query.range(of: #"\b(?:tomorrow|last\s+weeks|last\s+months?|last\s+years?)\b"#, options: .regularExpression) != nil {
             return true
         }
         if matches(unsupportedLastPattern, in: query).isEmpty == false {
