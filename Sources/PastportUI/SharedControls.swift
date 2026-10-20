@@ -16,47 +16,39 @@ public struct WindowPicker: View {
     }
 }
 
-/// Coverage, session details and the current status line. Progress is a static spinner.
+/// Progress while something is being read or answered. Quiet otherwise.
 public struct SessionStatus: View {
     let model: TimelineModel
 
     public init(model: TimelineModel) { self.model = model }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if !model.coverage.isEmpty {
-                Text(model.coverage).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+        if model.busy, !model.status.isEmpty {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(model.status).font(.footnote).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
             }
-            if !model.profile.isEmpty {
-                DisclosureGroup("Session details") {
-                    Text(model.profile).font(.caption2).foregroundStyle(.secondary)
-                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                }.font(.caption2)
-            }
-            if !model.status.isEmpty {
-                HStack(spacing: 6) {
-                    if model.busy { ProgressView().controlSize(.small) }
-                    Text(model.status).font(.caption).foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// Evidence answers versus the separate connected-tools conversation.
-public struct AssistantSourcePicker: View {
+/// Which source answers: what was read from this device, or the separate connected tools.
+public struct AnswerSourceMenu: View {
     @Bindable var model: TimelineModel
 
     public init(model: TimelineModel) { self.model = model }
 
     public var body: some View {
-        Picker("Assistant", selection: $model.assistantSource) {
-            Text(model.evidenceSourceTitle).tag(TimelineModel.AssistantSource.evidence)
-            Text("Connected tools").tag(TimelineModel.AssistantSource.connected)
+        Menu {
+            Picker("Answer from", selection: $model.assistantSource) {
+                Text(model.canReadHistory ? "My history" : "My timeline").tag(TimelineModel.AssistantSource.evidence)
+                Text("Connected tools").tag(TimelineModel.AssistantSource.connected)
+            }
+        } label: {
+            Label("Answer from", systemImage: "slider.horizontal.3")
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .help("Choose where answers come from")
     }
 }

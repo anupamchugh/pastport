@@ -2,43 +2,49 @@ import PastportKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Ask over the evidence already read: streamed answers, one Stop, and the tools each answer used.
+/// Ask over what has been read: starter questions, streamed answers, one Stop.
 public struct EvidenceAskView: View {
     @Bindable var model: TimelineModel
 
     public init(model: TimelineModel) { self.model = model }
 
-    private var scopeLine: String {
-        model.canReadHistory
-            ? "Retained Safari evidence · on-device · \(model.historyFocus.title)"
-            : "Photo activity and screenshots you added · on-device · Safari history stays on your Mac"
-    }
-
     public var body: some View {
         VStack(spacing: 0) {
-            Text(scopeLine)
-                .font(.caption2).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    if model.turns.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Ask about the evidence, then refine it.").font(.callout.weight(.medium))
-                            ForEach(model.questions(for: model.historyFocus), id: \.self) { s in
-                                Button { model.input = s; model.ask() } label: {
-                                    Text("“\(s)”").font(.caption).foregroundStyle(.tint)
-                                        .multilineTextAlignment(.leading)
-                                }.buttonStyle(.plain).disabled(model.busy)
-                            }
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
-                    }
+                VStack(alignment: .leading, spacing: 14) {
+                    if model.turns.isEmpty { starters }
                     ForEach(model.turns) { AskTurnView(turn: $0) }
-                }.padding(14)
+                }.padding(16)
             }
             .defaultScrollAnchor(.bottom)
             .defaultScrollAnchor(.topLeading, for: .alignment)
-            AskComposer(model: model)
+            if model.hasContent { AskComposer(model: model) }
+        }
+    }
+
+    @ViewBuilder private var starters: some View {
+        if model.hasContent {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(model.canReadHistory ? "Ask about your history" : "Ask about your timeline").font(.title2.bold())
+                Text("Answers come from what you have read, on this device.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                ForEach(model.starterQuestions, id: \.self) { question in
+                    Button { model.input = question; model.ask() } label: {
+                        Text(question).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.bordered).controlSize(.large).disabled(model.busy)
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Nothing to ask about yet").font(.title2.bold())
+                Text(model.canReadHistory
+                     ? "Read your history on the Home tab, then come back to ask about it."
+                     : "Read your photos or add a screenshot on the Home tab, then come back to ask about it.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Button("Go to Home") { model.tab = .trail }.buttonStyle(.borderedProminent)
+            }
         }
     }
 }
@@ -50,7 +56,7 @@ public struct AskComposer: View {
 
     public var body: some View {
         HStack(spacing: 8) {
-            TextField(model.canReadHistory ? "Ask about your history…" : "Ask about your timeline…",
+            TextField(model.canReadHistory ? "Ask about your history" : "Ask about your timeline",
                       text: $model.input, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
@@ -85,33 +91,50 @@ public struct AskTurnView: View {
                     .background(.tint, in: RoundedRectangle(cornerRadius: 12))
                     .foregroundStyle(.white)
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(answerText).font(.callout).textSelection(.enabled)
                     .foregroundStyle(turn.answer.isEmpty ? .secondary : .primary)
-                if !turn.toolsUsed.isEmpty {
-                    Label("Tools used: " + turn.toolsUsed.joined(separator: ", "), systemImage: "wrench.and.screwdriver")
-                        .font(.caption2).foregroundStyle(.secondary)
+                if !basis.isEmpty || !turn.toolsUsed.isEmpty {
+                    DisclosureGroup("Based on") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !basis.isEmpty { Text(basis).textSelection(.enabled) }
+                            if !turn.toolsUsed.isEmpty { Text("Looked at: " + turn.toolsUsed.joined(separator: ", ")) }
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }.font(.footnote)
                 }
                 if let note = turn.note {
-                    Label(note, systemImage: "info.circle").font(.caption2).foregroundStyle(.secondary)
+                    Text(note).font(.footnote).foregroundStyle(.secondary)
                 }
                 if let statusLine {
-                    Label(statusLine.text, systemImage: statusLine.icon).font(.caption2.weight(.medium))
+                    Label(statusLine.text, systemImage: statusLine.icon).font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 11).padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 14))
             .padding(.trailing, 24)
         }
         .accessibilityElement(children: .contain)
     }
 
+    private static let basisMarker = "\nSource evidence: "
+
+    /// The answer without the evidence lines the model path appends; those sit under "Based on".
+    private var shownAnswer: String {
+        turn.answer.components(separatedBy: Self.basisMarker).first ?? turn.answer
+    }
+
+    private var basis: String {
+        let parts = turn.answer.components(separatedBy: Self.basisMarker)
+        return parts.dropFirst().joined(separator: "\n")
+    }
+
     private var answerText: AttributedString {
         if turn.answer.isEmpty { return AttributedString(turn.status == .answering ? "Thinking…" : "No answer.") }
-        return markdown(turn.answer)
+        return markdown(shownAnswer)
     }
 
     private var statusLine: (text: String, icon: String)? {

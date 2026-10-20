@@ -52,7 +52,8 @@ struct HistoryFactsTests {
 
     @Test func lastVisitNamesTheDate() {
         let text = answer("When did I last visit news.example?")
-        #expect(text?.contains("2026-10-19") == true)
+        #expect(text?.contains(at(-9).formatted(.dateTime.month(.abbreviated).day().year())) == false)
+        #expect(text?.contains(at(-1).formatted(.dateTime.month(.abbreviated).day().year())) == true)
         #expect(text?.contains("2 times") == true)
     }
 
@@ -77,7 +78,7 @@ struct HistoryFactsTests {
 
     @Test func bookingCountUsesTheNamedMonthAndDoesNotClaimAPurchase() {
         let text = answer("How many booking pages did I visit in June?")
-        #expect(text?.contains("1 booking-like page in June 2026") == true)
+        #expect(text?.contains("1 booking page in June 2026") == true)
         #expect(text?.contains("does not prove") == true)
         let didBook = answer("Did I book a hotel?")
         #expect(didBook?.hasPrefix("I can’t tell whether you booked.") == true)

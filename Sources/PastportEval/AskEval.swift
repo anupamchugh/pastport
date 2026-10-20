@@ -78,7 +78,7 @@ public struct AskEvalFixture: Sendable {
             let iso = date.formatted(.iso8601.year().month().day())
             let f = DateFormatter(); f.calendar = calendar; f.locale = Locale(identifier: "en_US_POSIX")
             func s(_ pattern: String) -> String { f.dateFormat = pattern; return f.string(from: date) }
-            return [iso, s("MMM d"), s("MMMM d"), s("d MMM"), s("d MMMM")]
+            return [s("MMM d"), iso, s("MMMM d"), s("d MMM"), s("d MMMM")]
         }
 
         questions = [
@@ -93,7 +93,7 @@ public struct AskEvalFixture: Sendable {
             AskEvalQuestion(id: "today", question: "How many pages did I open today?",
                             truth: "\(today) visits today", mustContain: [[String(today)]], mustNotContain: ["unsupported"]),
             AskEvalQuestion(id: "last-visit", question: "When did I last visit news.example?",
-                            truth: "the most recent news.example visit was \(forms(lastNews)[0])", mustContain: [forms(lastNews)], mustNotContain: []),
+                            truth: "the most recent news.example visit was \(forms(lastNews)[1])", mustContain: [forms(lastNews)], mustNotContain: []),
             AskEvalQuestion(id: "searched-yes", question: "Did I search for kyoto?",
                             truth: "yes, three kyoto searches", mustContain: [["yes", "you did", "searched"], ["kyoto"]], mustNotContain: ["no retained", "did not search", "didn't search"]),
             AskEvalQuestion(id: "searched-no", question: "Did I search for quantum?",
@@ -121,7 +121,10 @@ public struct AskEvalFixture: Sendable {
 
     /// Text a grounded answer may draw names and figures from.
     var corpus: String {
-        visits.map { "\($0.host) \($0.title) \($0.url) " + $0.time.formatted(.iso8601.year().month().day()) }.joined(separator: "\n")
+        visits.map {
+            "\($0.host) \($0.title) \($0.url) " + $0.time.formatted(.iso8601.year().month().day())
+                + " " + $0.time.formatted(.dateTime.month(.abbreviated).day().year())
+        }.joined(separator: "\n")
             + "\n" + questions.map { $0.question + " " + $0.truth }.joined(separator: "\n")
             // Fixed wording the code-side answers use, so template words are not scored as inventions.
             + "\nCounts are page visits, not time spent. last week (7 days) last month (30 days)"

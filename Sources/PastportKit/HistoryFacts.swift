@@ -145,7 +145,7 @@ public enum HistoryFacts {
         }
     }
 
-    static func day(_ date: Date) -> String { date.formatted(.iso8601.year().month().day()) }
+    static func day(_ date: Date) -> String { date.formatted(.dateTime.month(.abbreviated).day().year()) }
 
     static func topSites(_ window: [Visit], limit: Int, label: String, scope: HistoryQuestionScope) -> DirectAnswer {
         let counts = Dictionary(grouping: window, by: \.host).mapValues(\.count)
@@ -208,12 +208,12 @@ public enum HistoryFacts {
         let travel = found.filter(\.isTravel)
         let caveat = "A page in your history shows it was opened; it does not prove anything was bought or completed."
         if found.isEmpty {
-            return DirectAnswer(text: "I found no booking-like pages \(inLabel(label)). \(didBook ? "History cannot confirm a booking either way." : "")".trimmingCharacters(in: .whitespaces),
+            return DirectAnswer(text: "I found no booking pages \(inLabel(label)). \(didBook ? "History cannot confirm a booking either way." : "")".trimmingCharacters(in: .whitespaces),
                                 kind: "bookings", scope: scope.rangeDescription)
         }
         let examples = found.sorted { $0.time > $1.time }.prefix(3).map { "\(day($0.time)): \($0.title.isEmpty ? $0.host : $0.title)" }.joined(separator: "; ")
         let lead = didBook ? "I can’t tell whether you booked. " : ""
-        return DirectAnswer(text: "\(lead)I found \(found.count) booking-like page\(found.count == 1 ? "" : "s") \(inLabel(label)) (\(travel.count) travel-related): \(examples). \(caveat)",
+        return DirectAnswer(text: "\(lead)I found \(found.count) booking page\(found.count == 1 ? "" : "s") \(inLabel(label))\(travel.count == found.count ? "" : " (\(travel.count) travel-related)"): \(examples). \(caveat)",
                             kind: "bookings", scope: scope.rangeDescription)
     }
 

@@ -24,6 +24,7 @@ struct PastportBarApp: App {
         let arguments = ProcessInfo.processInfo.arguments
         model.demoMode = arguments.contains("--demo") || ProcessInfo.processInfo.environment["PASTPORT_DEMO"] == "1"
         if arguments.contains("--ask") { model.openAskForScreenshots() }
+        if arguments.contains("--ask-empty") { model.start(); model.tab = .ask }
         #endif
         // Screen lock clears cached history, photo activity and answers.
         ScreenLock.onLock { model.lockAndClear() }
@@ -34,6 +35,7 @@ struct PastportBarApp: App {
         Window("Pastport", id: "main") {
             BarView(m: model)
                 .frame(minWidth: 480, minHeight: 560)
+                .preferredColorScheme(Self.screenshotScheme)
         }
         .defaultSize(width: 520, height: 640)
 
@@ -43,6 +45,16 @@ struct PastportBarApp: App {
                 .frame(width: 520, height: 620)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    /// Debug builds only: force light or dark for screenshots.
+    static var screenshotScheme: ColorScheme? {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--light") { return .light }
+        if arguments.contains("--dark") { return .dark }
+        #endif
+        return nil
     }
 
     @MainActor static func makeModel() -> TimelineModel {
