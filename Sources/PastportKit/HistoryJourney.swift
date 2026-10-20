@@ -147,6 +147,19 @@ public actor HistoryJourney {
         onPartial: (@MainActor @Sendable (String) -> Void)? = nil
     ) async throws -> HistoryAnswer {
         let requestEpoch = epoch
+        // Simple factual questions are answered in code, with no model, so a count, a date or a
+        // site name can only come from the retained visits.
+        if let direct = HistoryFacts.answer(question: question, visits: visits) {
+            guard !closed else { throw CancellationError() }
+            turn += 1
+            await onPartial?(direct.text)
+            return HistoryAnswer(text: direct.text, receipt: JourneyReceipt(
+                sessionID: sessionID, turn: turn, mode: "direct · \(direct.kind)",
+                toolCalls: ["history_facts"], toolOutputCount: 1, inputTokens: nil, outputTokens: nil,
+                contextTokens: nil, contextTokenMeasurement: "none", seconds: 0,
+                usedDynamicProfile: false, didCompact: false,
+                summary: "Answered in code from the retained visits; no model was used."))
+        }
         let runtime = try await runtimeForCurrentSession()
         turn += 1
         let effectiveFocus = focus ?? HistoryJourneyValidation.followUpFocus(for: question, previous: lastFocus)
@@ -306,7 +319,8 @@ struct JourneyEvidence: @unchecked Sendable {
             "research", "threads", "thread", "topics", "topic", "queries", "query", "search", "searches", "repeated", "recurring", "original",
             "travel", "related", "booking", "bookings", "hotel", "hotels", "flight", "flights", "trip", "trips", "checkout", "confirmation", "itinerary",
             "tracking", "patterns", "privacy", "location", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
-            "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching"
+            "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching",
+            "researching", "researched", "looking", "looked", "trying", "browsing", "browsed", "reading", "visited", "opened", "pages", "sites", "site", "week", "weeks", "month", "months", "today", "yesterday", "recently", "lately", "history", "about"
         ]
         let keywords = broadOverview || !matchingRequested ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
         var matches: [Visit] = []

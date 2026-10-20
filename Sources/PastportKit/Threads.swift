@@ -110,9 +110,9 @@ public enum Threads {
     // MARK: - extraction
 
     /// `"kyoto has separate visa? - Google Search"` → `"kyoto has separate visa?"`.
-    /// Matches any engine that follows the `… - <Word> Search` title convention.
+    /// Matches any engine that follows the `… - <Word> Search` title convention, or a bare `… - Search`.
     static let queryPattern = try? NSRegularExpression(
-        pattern: #"^(.*?)\s+[-–|]\s+\w+\s+Search$"#, options: [.caseInsensitive]
+        pattern: #"^(.*?)\s+[-–|]\s+(?:\w+\s+)?Search$"#, options: [.caseInsensitive]
     )
 
     /// Inverting a CharacterSet allocates a bitmap, so build it once rather than per query.

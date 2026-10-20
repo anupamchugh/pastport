@@ -77,6 +77,38 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
 @MainActor
 @Suite("Timeline model", .timeLimit(.minutes(1)))
 struct TimelineModelTests {
+    @Test func starterQuestionsOnlyOfferWhatTheDataCanAnswer() throws {
+        let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        #expect(model.starterQuestions.isEmpty)
+        #expect(!model.hasContent)
+        model.demoMode = true
+        model.start()
+        #expect(model.hasContent)
+        #expect(model.starterQuestions.count == 4)
+        #expect(model.starterQuestions.contains("How many booking pages did I visit?"))
+        #expect(model.focusCards.map(\.focus).contains(.travel))
+        // Counts agree with their nouns and never show raw inflection markup.
+        let headlines = model.focusCards.map(\.headline)
+        #expect(headlines.contains("2 booking pages"))
+        #expect(headlines.allSatisfy { !$0.contains("^[") && !$0.contains("inflect") })
+    }
+
+    @Test func aSensitiveTopicIsNeverNamedOrCountedOnTheHomeCards() {
+        let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        let when = Date()
+        func thread(_ term: String) -> IntentThread {
+            IntentThread(term: term, related: [], queries: ["\(term) near me"], started: when, destinations: [], searchCount: 3)
+        }
+        model.threads = [thread("clinic"), thread("kyoto")]
+        let research = model.focusCards.first { $0.focus == .research }
+        #expect(research?.headline == "Kyoto")
+        #expect(research?.detail.isEmpty == true)
+        model.threads = [thread("clinic")]
+        #expect(model.focusCards.contains { $0.focus == .research } == false)
+    }
+
     private func phoneModel(_ answerer: ScriptedAnswerer) -> TimelineModel {
         TimelineModel(history: nil, photos: NoPhotos(), authenticator: AlwaysUnlocked(),
                       timelineAnswerer: answerer, appleIntelligenceReady: { false })
@@ -94,9 +126,11 @@ struct TimelineModelTests {
         #expect(model.photoEvents.count == 1)
         #expect(model.photoEvents.first?.photoCount == 1)
         #expect(model.photoEvents.first?.screenshotCount == 1)
-        model.input = "Where did I go?"
+        model.input = "Which sites do I visit most?"
         model.ask()
-        #expect(model.turns.count == 1 && model.turns.first?.status == .answered)
+        try await waitUntil { model.turns.first?.status == .answered && !model.busy }
+        #expect(model.turns.count == 1)
+        #expect(model.turns.first?.answer.contains("guide.example (3)") == true)
         #expect(model.historyLoaded)
         #expect(!model.sites.isEmpty)
         model.selectFocus(.travel)
@@ -297,3 +331,31 @@ struct TimelineModelTests {
     }
 }
 #endif
+
+@Suite("Home search and card order")
+@MainActor
+struct HomeSearchTests {
+    private func demoModel() -> TimelineModel {
+        let model = TimelineModel(history: DemoHistorySource(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.demoMode = true
+        model.start()
+        return model
+    }
+
+    @Test func searchFindsPagesByEveryWordNewestFirst() {
+        let model = demoModel()
+        let found = model.search("food guide")
+        #expect(found.count == 2)
+        #expect(found.first?.time ?? .distantPast >= found.last?.time ?? .distantFuture)
+        #expect(model.search("food zzzz").isEmpty)
+        #expect(model.search("   ").isEmpty)
+    }
+
+    @Test func generalJobsComeBeforeTripsOnTheHomeScreen() {
+        let order = demoModel().focusCards.map(\.focus)
+        #expect(order.first == .research)
+        #expect(order.contains(.privacy))
+        #expect(order.last == .travel)
+    }
+}

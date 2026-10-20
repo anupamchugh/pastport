@@ -1,8 +1,8 @@
 # Pastport
 
-**Your browser history knows where you live. Pastport helps you read it.**
+**Find anything you have seen before. Pastport searches your Safari history in plain words, privately on your Mac.**
 
-Pastport is a native macOS app, iPhone and iPad app, and CLI for finding travel trails, bookings, threads, and trackers in your own Safari history. Safari analysis runs locally, behind Touch ID, with no cloud account or hosted database. Apple Foundation Models run on-device; local Ollama remains available for CLI phrasing. The separate Connected tools assistant can contact the services shown in each approval request.
+Pastport is a native macOS app, iPhone and iPad app, and CLI. It helps you find a page again, see what you have been into, check your privacy (trackers and links that carry a location), and review trips and bookings, all from your own Safari history. Safari analysis runs locally, behind Touch ID, with no cloud account or hosted database. Apple Foundation Models run on-device; local Ollama remains available for CLI phrasing. The separate Connected tools assistant can contact the services shown in each approval request.
 
 ![Pastport Recent view](docs/pastport-recent.png)
 

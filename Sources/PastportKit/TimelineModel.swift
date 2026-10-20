@@ -48,7 +48,7 @@ public struct LocalModels: Sendable {
 @Observable
 public final class TimelineModel {
     public enum Tab: String, CaseIterable, Identifiable, Sendable {
-        case trail = "Explore"
+        case trail = "Home"
         case ask = "Ask"
         public var id: String { rawValue }
     }
@@ -457,9 +457,6 @@ public final class TimelineModel {
         let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty, !busy else { return }
         input = ""
-        #if DEBUG
-        if demoMode, canReadHistory { appendDemoAnswer(to: q); return }
-        #endif
         let turn = AskTurn(prompt: q, answer: "Preparing evidence…")
         turns.append(turn)
         activeAnswerID = turn.id
@@ -517,6 +514,12 @@ public final class TimelineModel {
         guard !visits.isEmpty else {
             activeAnswerID = nil
             update(turnID) { $0.answer = "No history in this window to answer from."; $0.status = .failed }
+            return
+        }
+        if let direct = HistoryFacts.answer(question: q, visits: visits) {
+            activeAnswerID = nil
+            update(turnID) { $0.answer = direct.text; $0.status = .answered; $0.note = "Counted from your history on this device" }
+            status = "Answer ready"
             return
         }
         do {
@@ -590,7 +593,7 @@ public final class TimelineModel {
     /// Development screenshots: open Ask with the first suggested question. Debug builds only.
     public func openAskForScreenshots() {
         start()
-        input = questions(for: historyFocus).first ?? ""
+        input = starterQuestions.first ?? questions(for: historyFocus).first ?? ""
         tab = .ask
         ask()
     }

@@ -5,7 +5,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Mac window and menu-bar panel. All state lives in `TimelineModel`; this view only
-/// lays it out and adds the Mac-only Quit button.
+/// lays it out and adds the Mac-only menu items.
 struct BarView: View {
     @Bindable var m: TimelineModel
     @State private var exporting = false
@@ -15,9 +15,19 @@ struct BarView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            content
-            Divider()
-            footer
+            SessionStatus(model: m).padding(.horizontal, 16).padding(.top, 8)
+            Group {
+                switch m.tab {
+                case .trail:
+                    HomeView(model: m)
+                case .ask:
+                    if m.assistantSource == .connected {
+                        ConnectedAssistantView(model: m.connectedAssistant)
+                    } else {
+                        EvidenceAskView(model: m)
+                    }
+                }
+            }.id(m.contentID)
         }
         .frame(minWidth: 420, minHeight: 560)
         .onAppear { m.start() }
@@ -32,83 +42,38 @@ struct BarView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text("Pastport").font(.headline)
-            Text("on-device").font(.caption2.weight(.medium))
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.tint.opacity(0.15)).foregroundStyle(.tint).clipShape(Capsule())
-            Spacer()
-            Menu {
-                Picker("Model", selection: $m.model) {
-                    ForEach(m.models, id: \.self) { Text($0).tag($0) }
-                }
-                Divider()
-                WindowPicker(days: $m.days)
-            } label: {
-                Label(m.model.isEmpty ? "Facts only" : shortModel, systemImage: "cpu")
-                    .font(.caption)
-            }
-            .menuStyle(.borderlessButton).fixedSize().disabled(m.busy)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-
-    private var shortModel: String {
-        m.usingApple ? "Apple Intelligence" : m.model
-    }
-
-    private var content: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $m.tab) {
+        HStack(spacing: 12) {
+            Picker("Section", selection: $m.tab) {
                 ForEach(TimelineModel.Tab.allCases) { Text($0.rawValue).tag($0) }
             }
-            .pickerStyle(.segmented).labelsHidden()
-            .padding(.horizontal, 14).padding(.vertical, 10)
-
-            SessionStatus(model: m).padding(.horizontal, 14).padding(.bottom, 6)
-
-            Group {
-                switch m.tab {
-                case .trail:
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            HistoryTrailView(model: m)
-                            Divider()
-                            PhotoActivitySection(model: m)
-                            Divider()
-                            ScreenshotsSection(model: m)
-                        }.padding(14)
-                    }
-                case .ask:
-                    VStack(spacing: 0) {
-                        AssistantSourcePicker(model: m).padding(.horizontal, 14).padding(.vertical, 6)
-                        if m.assistantSource == .connected {
-                            ConnectedAssistantView(model: m.connectedAssistant)
-                        } else {
-                            EvidenceAskView(model: m)
-                        }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            Spacer()
+            if m.tab == .ask { AnswerSourceMenu(model: m).labelStyle(.iconOnly).menuStyle(.borderlessButton).fixedSize() }
+            Menu {
+                Button("Lock and clear", systemImage: "lock") { m.lockAndClear() }
+                    .disabled(!m.hasContent)
+                Divider()
+                if !m.models.isEmpty {
+                    Picker("Model", selection: $m.model) {
+                        ForEach(m.models, id: \.self) { Text($0).tag($0) }
                     }
                 }
-            }.id(m.contentID)
-        }
-    }
-
-    private var footer: some View {
-        HStack {
-            Button("Lock & clear", systemImage: "lock.fill") { m.lockAndClear() }
-                .controlSize(.small)
-            Button("Export to Foundation Lab") {
-                exportDocument = m.experimentData().map(ExperimentDocument.init(data:))
-                exporting = exportDocument != nil
+                WindowPicker(days: $m.days)
+                Divider()
+                Button("Export summary for Foundation Lab…") {
+                    exportDocument = m.experimentData().map(ExperimentDocument.init(data:))
+                    exporting = exportDocument != nil
+                }
+                .disabled(!m.canExport)
+                Divider()
+                Button("Quit Pastport") { NSApplication.shared.terminate(nil) }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-                .controlSize(.small).disabled(!m.canExport)
-                .help("Exports category counts and date coverage only. No URLs, titles, searches, locations or answers. The file remains after Lock & clear.")
-            Spacer()
-            Button("Quit") { NSApplication.shared.terminate(nil) }.controlSize(.small)
-        }.padding(.horizontal, 14).padding(.vertical, 8)
+            .menuStyle(.borderlessButton).fixedSize().disabled(m.busy && m.tab != .ask)
+            .help("More")
+            .accessibilityLabel("More")
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 }

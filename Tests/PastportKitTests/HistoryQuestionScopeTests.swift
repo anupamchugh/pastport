@@ -84,9 +84,35 @@ struct HistoryQuestionScopeTests {
 
     @Test("unsupported date words never fall back to all retained visits")
     func unsupportedDoesNotWiden() {
-        let result = HistoryQuestionScope.resolve(visits: visits(), question: "what did I visit last week")
+        let result = HistoryQuestionScope.resolve(visits: visits(), question: "what will I visit tomorrow")
         #expect(result.visits.isEmpty)
         #expect(result.unsupportedReason != nil)
+    }
+
+    @Test("today, yesterday, last week and a named month are supported windows")
+    func everydayWindows() {
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 20, hour: 15))!
+        let day = { (offset: Int, hour: Int) in
+            self.calendar.date(byAdding: .hour, value: hour, to: self.calendar.date(byAdding: .day, value: offset, to: self.date(2026, 10, 20))!)!
+        }
+        let source = [
+            Visit(time: day(0, 9), title: "today", url: "https://a.example"),
+            Visit(time: day(-1, 23), title: "yesterday late", url: "https://b.example"),
+            Visit(time: day(-1, 1), title: "yesterday early", url: "https://b.example"),
+            Visit(time: day(-5, 12), title: "this week", url: "https://c.example"),
+            Visit(time: date(2026, 6, 3), title: "june", url: "https://d.example"),
+            Visit(time: date(2026, 6, 30), title: "june end", url: "https://d.example"),
+            Visit(time: date(2025, 6, 3), title: "last june", url: "https://e.example"),
+        ]
+        let resolve = { HistoryQuestionScope.resolve(visits: source, question: $0, nowDate: now) }
+        #expect(resolve("how many visits yesterday").visits.count == 2)
+        #expect(resolve("what did I open today").visits.count == 1)
+        #expect(resolve("top sites last week").visits.count == 4)
+        #expect(resolve("how many pages in June").visits.count == 2)
+        #expect(resolve("how many pages in June").rangeDescription == "June 2026")
+        #expect(resolve("pages in June 2025").visits.count == 1)
+        #expect(resolve("pages in December").rangeDescription == "December 2025")
+        #expect(resolve("how many visits yesterday").unsupportedReason == nil)
     }
 
     @Test("questions without a date qualifier preserve the retained snapshot")

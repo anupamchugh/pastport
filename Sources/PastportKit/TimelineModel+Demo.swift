@@ -45,9 +45,5 @@ extension TimelineModel {
         ])
         photoStatus = "Demo photo activity · fictional records; no library read"
     }
-
-    func appendDemoAnswer(to question: String) {
-        turns.append(AskTurn(prompt: question, answer: "Fictional evidence only: the demo includes map links and travel-related pages. Those records do not establish a completed trip. No Safari history was read.", status: .answered, note: "Demo answer"))
-    }
 }
 #endif

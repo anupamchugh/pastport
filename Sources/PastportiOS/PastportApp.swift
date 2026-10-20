@@ -18,6 +18,7 @@ struct PastportApp: App {
                     model.start()
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ask") { model.openAskForScreenshots() }
+                    if ProcessInfo.processInfo.arguments.contains("--ask-empty") { model.tab = .ask }
                     #endif
                 }
         }
@@ -42,7 +43,7 @@ struct RootView: View {
             }
         } else {
             TabView(selection: $model.tab) {
-                Tab("Timeline", systemImage: "clock.arrow.circlepath", value: TimelineModel.Tab.trail) {
+                Tab("Home", systemImage: "house", value: TimelineModel.Tab.trail) {
                     TimelineScreen(model: model)
                 }
                 Tab("Ask", systemImage: "bubble.left.and.text.bubble.right", value: TimelineModel.Tab.ask) {
@@ -58,58 +59,35 @@ struct TimelineScreen: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    SessionStatus(model: model)
-                    SafariStaysOnMac()
-                    PhotoActivitySection(model: model)
-                    Divider()
-                    ScreenshotsSection(model: model)
-                }
-                .padding()
-                .id(model.contentID)
+            VStack(spacing: 0) {
+                SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
+                HomeView(model: model)
             }
-            .navigationTitle("Timeline")
+            .id(model.contentID)
+            .navigationTitle(model.hasContent ? "Pastport" : "")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         WindowPicker(days: $model.days)
+                        Divider()
+                        Button("Lock and clear", systemImage: "lock") { model.lockAndClear() }
+                            .disabled(!model.hasContent)
                     } label: {
-                        Label("Window: \(model.windowTitle)", systemImage: "calendar")
+                        Label("More", systemImage: "ellipsis.circle")
                     }
                     .disabled(model.busy)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Lock & clear", systemImage: "lock.fill") { model.lockAndClear() }
-                }
             }
         }
-    }
-}
-
-/// Says plainly why there is no browsing history here.
-struct SafariStaysOnMac: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Safari history stays on your Mac", systemImage: "safari")
-                .font(.headline)
-            Text("iOS doesn't let apps read Safari history, so Pastport on iPhone and iPad builds your timeline from photo activity and screenshots you add. Pastport for Mac reads Safari history on your Mac only.")
-                .font(.callout).foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
-        .accessibilityElement(children: .combine)
     }
 }
 
 struct AskScreen: View {
-    let model: TimelineModel
+    @Bindable var model: TimelineModel
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                AssistantSourcePicker(model: model).padding(.horizontal).padding(.vertical, 6)
+            Group {
                 if model.assistantSource == .connected {
                     ScrollView { ConnectedAssistantView(model: model.connectedAssistant) }
                 } else {
@@ -119,6 +97,11 @@ struct AskScreen: View {
             .id(model.contentID)
             .navigationTitle("Ask")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    AnswerSourceMenu(model: model).labelStyle(.iconOnly)
+                }
+            }
         }
     }
 }

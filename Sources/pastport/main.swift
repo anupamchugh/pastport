@@ -1,5 +1,6 @@
 import Foundation
 import PastportKit
+import PastportEval
 import PastportMac
 
 let usage = """
@@ -25,6 +26,7 @@ COMMANDS
   trackers          outbound interstitials / redirects / UTM (deterministic)  [SQL only]
   bookings          confirmations, itineraries, receipts you actually made    [SQL only]
   photos            photo bursts and scene labels from local Photos            [Photos]
+  ask-eval          score the app's Ask on a fictional history (on-device model)
   help              show this help
 
 OPTIONS
@@ -417,6 +419,19 @@ case "ask":
         print(useApple() ? try await AppleFoundation.generate(prompt: prompt)
                          : try await Ollama.generate(model: model, prompt: prompt))
     } catch { fail("\(error)") }
+
+case "ask-eval":
+    // The app's Ask path (HistoryJourney) on a fixed fictional history, scored against
+    // answers computed in Swift. Uses the on-device model; never reads Safari.
+    let fixture = AskEvalFixture()
+    print("Ask eval · \(fixture.questions.count) questions · \(fixture.visits.count) fictional visits\n")
+    let results = await AskEval.run(fixture: fixture) { f, question in
+        let journey = HistoryJourney(visits: f.visits, scope: "fictional evaluation history")
+        let reply = try await journey.answer(question)
+        await journey.clear()
+        return reply.text
+    }
+    print(AskEval.table(results))
 
 case "agent":
     if !daysExplicit { days = 30 }   // give the agent a month to drill into

@@ -29,9 +29,11 @@ let package = Package(
         ]),
         // Mac-only adapters: Safari's database via /usr/bin/sqlite3, osascript, local Ollama.
         .target(name: "PastportMac", dependencies: ["PastportKit"]),
+        // Fictional fixture and scorer for the Ask eval. Linked by the CLI only, never by an app.
+        .target(name: "PastportEval", dependencies: ["PastportKit"]),
         .executableTarget(
             name: "pastport",
-            dependencies: ["PastportKit", "PastportMac"]
+            dependencies: ["PastportKit", "PastportMac", "PastportEval"]
         ),
         .executableTarget(
             name: "PastportBar",
@@ -41,6 +43,7 @@ let package = Package(
             name: "PastportKitTests",
             dependencies: ["PastportKit"]
         ),
+        .testTarget(name: "PastportEvalTests", dependencies: ["PastportEval", "PastportKit"]),
         .testTarget(name: "PastportMacTests", dependencies: ["PastportMac"]),
     ],
     swiftLanguageModes: [.v5]
