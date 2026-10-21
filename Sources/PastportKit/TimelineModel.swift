@@ -97,6 +97,8 @@ public final class TimelineModel {
     public internal(set) var screenshotStatus = TimelineModel.screenshotsClosed
     /// Changes on every lock so views drop any local disclosure state.
     public internal(set) var contentID = UUID()
+    /// True from launch and after every lock. `unlock()` clears it once a photo read pass ends.
+    public internal(set) var isLocked = true
 
     /// False on iPhone and iPad, where iOS does not let apps read Safari history.
     public var canReadHistory: Bool { history != nil }
@@ -124,6 +126,7 @@ public final class TimelineModel {
     /// Observed: `canExport` reads it.
     var visits: [Visit] = []
 
+    public static let unlockFailed = "Could not unlock. Nothing was read."
     static let photosClosed = "Photos are closed. Read activity when you choose."
     static let screenshotsClosed = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
     public static let appleModelName = AppleFoundation.displayName
@@ -178,7 +181,7 @@ public final class TimelineModel {
     public func lockAndClear() {
         generation = UUID()
         operation?.cancel(); operation = nil; operationID = nil
-        unlocked = false; busy = false
+        unlocked = false; busy = false; isLocked = true
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; screenshots = []; turns = []; input = ""
         coverage = ""; profile = ""; journeyReceipt = nil
@@ -200,10 +203,14 @@ public final class TimelineModel {
 
     // MARK: Photos
 
-    public func readPhotos() {
+    public func readPhotos() { unlock() }
+
+    /// Authenticates, then asks for Photos access, then reads the window. The timeline unlocks
+    /// when that read ends, even with nothing found; a failed authentication keeps it locked.
+    public func unlock() {
         guard !busy else { return }
         #if DEBUG
-        if demoMode { loadDemoPhotos(); return }
+        if demoMode { loadDemoPhotos(); isLocked = false; return }
         #endif
         let token = generation
         let since = days == 0 ? Date.distantPast : Date().addingTimeInterval(-Double(days) * 86400)
@@ -215,20 +222,22 @@ public final class TimelineModel {
                 // Authentication precedes even the Photos permission prompt.
                 let result = await authenticator.unlock(reason: "read your local photo activity", graceMinutes: 0)
                 guard token == generation, !Task.isCancelled else { authenticator.relock(); return }
-                guard result == .unlocked else { photoStatus = "Authentication cancelled — Photos kept closed."; return }
+                guard result == .unlocked else { photoStatus = Self.unlockFailed; return }
                 await photos.requestAccess()
                 guard token == generation, !Task.isCancelled else { return }
                 let photoRead = try await photos.read(since: since, limit: 500)
                 guard token == generation, !Task.isCancelled else { return }
                 photoEvents = PhotoEvents.cluster(photoRead.records)
                 photoStatus = PhotoEvents.statusLine(for: photoRead)
+                isLocked = false
             } catch is CancellationError {
             } catch let error as PhotoLibraryError {
                 guard token == generation else { return }
-                photoEvents = []; photoStatus = PhotoEvents.statusLine(for: error)
+                photoEvents = []; photoStatus = PhotoEvents.statusLine(for: error); isLocked = false
             } catch {
                 guard token == generation else { return }
                 photoEvents = []; photoStatus = "Photo activity could not be read. Try again after checking Photos access."
+                isLocked = false
             }
         }
     }

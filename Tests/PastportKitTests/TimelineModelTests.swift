@@ -74,6 +74,32 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
     }
 }
 
+/// Records the order of authenticate, access request and read.
+private final class CallLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+    var value: [String] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+private struct LoggedAuth: Authenticating {
+    let log: CallLog
+    var result: UnlockResult = .unlocked
+    func unlock(reason: String, graceMinutes: Int) async -> UnlockResult { log.add("authenticate"); return result }
+    func relock() {}
+}
+
+private struct LoggedPhotos: PhotoLibraryReading {
+    let log: CallLog
+    var failure: PhotoLibraryError?
+    func records(since: Date, limit: Int) async throws -> [PhotoRecord] {
+        log.add("read")
+        if let failure { throw failure }
+        return [PhotoRecord(time: Date(), isScreenshot: false, labels: [])]
+    }
+    func requestAccess() async { log.add("access") }
+}
+
 @MainActor
 @Suite("Timeline model", .timeLimit(.minutes(1)))
 struct TimelineModelTests {
@@ -240,6 +266,68 @@ struct TimelineModelTests {
         #expect(model.photoStatus.contains("scene labels"))
         #expect(!model.photoStatus.lowercased().contains("never"))
         #expect(!model.photoStatus.lowercased().contains("not inspected"))
+    }
+
+    // MARK: Unlock (slice 4)
+
+    private func lockedModel(auth: UnlockResult = .unlocked, failure: PhotoLibraryError? = nil,
+                             reader: ScreenshotReader = ScreenshotReader()) -> (TimelineModel, CallLog) {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log, failure: failure), screenshotReader: reader,
+                                  authenticator: LoggedAuth(log: log, result: auth),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        return (model, log)
+    }
+
+    @Test func launchIsLocked() {
+        let (model, log) = lockedModel()
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
+        #expect(log.value.isEmpty, "nothing is authenticated or read before the person unlocks")
+    }
+
+    @Test func unlockAuthenticatesThenRequestsAccessThenReads() async throws {
+        let (model, log) = lockedModel()
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        #expect(log.value == ["authenticate", "access", "read"])
+        #expect(model.photoEvents.count == 1)
+    }
+
+    @Test func cancelledAuthenticationStaysLockedWithNoEvidence() async throws {
+        let (model, log) = lockedModel(auth: .cancelled)
+        model.unlock()
+        try await waitUntil { !model.busy && log.value.contains("authenticate") }
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
+        #expect(log.value == ["authenticate"], "no Photos access is requested after a failed unlock")
+    }
+
+    @Test func deniedPhotoReadStillUnlocksWithTheDeniedStatus() async throws {
+        let (model, _) = lockedModel(failure: .denied)
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        #expect(model.photoEvents.isEmpty)
+        #expect(model.photoStatus == PhotoEvents.statusLine(for: .denied))
+    }
+
+    @Test func screenshotAddedWhileLockedIsKeptUntilLockAndClear() async throws {
+        let (model, _) = lockedModel(reader: ScreenshotReader { _ in ["Ferry ticket"] })
+        model.addScreenshot(data: Data([0x1]), name: "Ticket")
+        try await waitUntil { model.screenshots.count == 1 }
+        #expect(model.isLocked, "adding a screenshot does not unlock the timeline")
+        model.lockAndClear()
+        #expect(model.screenshots.isEmpty)
+        #expect(model.isLocked)
+    }
+
+    @Test func changingTheWindowRelocks() async throws {
+        let (model, _) = lockedModel()
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        model.days = 7
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
     }
 
     @Test func screenshotFinishingAfterALockIsDropped() async throws {
