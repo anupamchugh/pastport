@@ -105,7 +105,7 @@ public enum EvidenceCards {
     }
 
     static func privacySummary(_ shots: [AddedScreenshot]) -> EvidenceCard {
-        let total = shots.map(\.evidence.redactions).reduce(.none, +)
+        let total = shots.map(\.evidence.redactions).reduce(RedactionCounts.zero, +)
         let added = count(shots.count, "screenshot")
         let sentence = total.total == 0
             ? "Nothing sensitive found in \(added) you added."

@@ -38,7 +38,7 @@ public struct RedactionCounts: Equatable, Sendable {
         self.card = card
     }
 
-    public static let none = RedactionCounts()
+    public static let zero = RedactionCounts()
 
     public var total: Int { email + otp + card }
 
@@ -152,7 +152,7 @@ enum ScreenshotScrubber {
 
     static func scrub(_ lines: [String]) -> ScreenshotEvidence {
         guard !lines.isEmpty else {
-            return ScreenshotEvidence(lines: [], redactions: .none, kind: .unknown)
+            return ScreenshotEvidence(lines: [], redactions: .zero, kind: .unknown)
         }
         let text = lines.joined(separator: "\n")
         let (withoutEmails, emailCount) = replacing(email, in: text, with: "[EMAIL]")

@@ -70,7 +70,7 @@ public struct TimelineEvidence: Sendable, Equatable {
     /// Hidden items by kind across the added screenshots. Counts only; never the hidden text,
     /// and no screenshot text at all, so the Privacy trail can use it alone.
     public var redactionSummary: String {
-        let total = screenshots.map(\.evidence.redactions).reduce(.none, +)
+        let total = screenshots.map(\.evidence.redactions).reduce(RedactionCounts.zero, +)
         return "redactions: \(total.email) email addresses, \(total.otp) one-time codes, \(total.card) card numbers "
             + "hidden across \(screenshots.count) added screenshots"
     }
@@ -302,11 +302,11 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
     static func tools(for evidence: TimelineEvidence, log: TimelineToolLog) -> [any Tool] {
         TimelineTools.names(for: evidence.trail).map { name -> any Tool in
             switch name {
-            case TimelineTools.counts: TimelineCountsTool(evidence: evidence, log: log)
-            case TimelineTools.photoActivity: PhotoActivityTool(evidence: evidence, log: log)
-            case TimelineTools.addedScreenshots: AddedScreenshotsTool(evidence: evidence, log: log)
-            case TimelineTools.bookings: BookingsTool(evidence: evidence, log: log)
-            default: RedactionSummaryTool(evidence: evidence, log: log)
+            case TimelineTools.counts: return TimelineCountsTool(evidence: evidence, log: log)
+            case TimelineTools.photoActivity: return PhotoActivityTool(evidence: evidence, log: log)
+            case TimelineTools.addedScreenshots: return AddedScreenshotsTool(evidence: evidence, log: log)
+            case TimelineTools.bookings: return BookingsTool(evidence: evidence, log: log)
+            default: return RedactionSummaryTool(evidence: evidence, log: log)
             }
         }
     }

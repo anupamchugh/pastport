@@ -87,7 +87,7 @@ struct RedactedLine: View {
     ]
 
     private var segments: [(text: String, hidden: Bool)] {
-        var result: [(String, Bool)] = []
+        var result: [(text: String, hidden: Bool)] = []
         var rest = Substring(line)
         while !rest.isEmpty {
             let next = Self.tokens.compactMap { item in rest.range(of: item.token).map { ($0, item.token) } }

@@ -363,9 +363,9 @@ final class ScreenshotReaderTests: XCTestCase {
 
     func testCleanTextHasNoRedactions() {
         let evidence = ScreenshotScrubber.scrub(["Ferry to the island", "Gate 4"])
-        XCTAssertEqual(evidence.redactions, .none)
+        XCTAssertEqual(evidence.redactions, .zero)
         XCTAssertEqual(evidence.redactionCount, 0)
-        XCTAssertEqual(ScreenshotScrubber.scrub([]).redactions, .none)
+        XCTAssertEqual(ScreenshotScrubber.scrub([]).redactions, .zero)
     }
 
     func testRedactionCountsNeverCarryTheHiddenText() {
