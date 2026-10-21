@@ -94,6 +94,9 @@ public struct AskTurnView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(answerText).font(.callout).textSelection(.enabled)
                     .foregroundStyle(turn.answer.isEmpty ? .secondary : .primary)
+                if !turn.evidenceKinds.isEmpty {
+                    HStack(spacing: 6) { ForEach(turn.evidenceKinds, id: \.self) { SourceLabel($0.sourceLabel) } }
+                }
                 if !basis.isEmpty || !turn.toolsUsed.isEmpty {
                     DisclosureGroup("Based on") {
                         VStack(alignment: .leading, spacing: 4) {

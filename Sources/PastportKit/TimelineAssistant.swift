@@ -120,11 +120,54 @@ public struct TimelineAnswerProgress: Sendable, Equatable {
     public let text: String
     public let toolsUsed: [String]
     public let source: Source
+    /// The source labels the answer drew on, kept only when a matching tool was called.
+    public let evidenceKinds: [EvidenceKind]
 
-    public init(text: String, toolsUsed: [String] = [], source: Source) {
+    public init(text: String, toolsUsed: [String] = [], source: Source, evidenceKinds: [EvidenceKind] = []) {
         self.text = text
         self.toolsUsed = toolsUsed
         self.source = source
+        self.evidenceKinds = evidenceKinds
+    }
+}
+
+/// Which kind of evidence an answer used, shown as its source label.
+public enum EvidenceKind: String, CaseIterable, Sendable {
+    case photoActivity
+    case screenshot
+
+    public var sourceLabel: String {
+        switch self {
+        case .photoActivity: EvidenceCard.Source.photoActivity.rawValue
+        case .screenshot: EvidenceCard.Source.screenshot.rawValue
+        }
+    }
+
+    /// The tools whose output is this kind of evidence.
+    var tools: Set<String> {
+        switch self {
+        case .photoActivity: [TimelineTools.photoActivity, TimelineTools.counts]
+        case .screenshot: [TimelineTools.addedScreenshots, TimelineTools.bookings, TimelineTools.redactionSummary]
+        }
+    }
+}
+
+/// The evidence and trail an iOS 27 dynamic profile reads. A profile may be evaluated off the
+/// caller's executor, so it publishes one coherent immutable snapshot, as `JourneyProfileState` does.
+public final class TimelineProfileState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: TimelineEvidence
+
+    public init(evidence: TimelineEvidence) { value = evidence }
+
+    public var snapshot: TimelineEvidence {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+
+    public func update(_ evidence: TimelineEvidence) {
+        lock.lock(); defer { lock.unlock() }
+        value = evidence
     }
 }
 
@@ -162,16 +205,25 @@ public enum TimelineAnswerPolicy {
         HistoryJourneyValidation.allowsNarrative(text, evidenceLines: evidence.lines)
     }
 
+    /// A claimed kind stays only when a tool of that kind actually ran.
+    public static func keptKinds(_ claimed: [EvidenceKind], toolsCalled: [String]) -> [EvidenceKind] {
+        var seen = Set<EvidenceKind>()
+        return claimed.filter { !$0.tools.isDisjoint(with: toolsCalled) && seen.insert($0).inserted }
+    }
+
     /// What to send after the stream ends, given the model's finished text and what was shown.
     public static func finalProgress(raw: String, shown: String, toolsUsed: [String],
-                                     evidence: TimelineEvidence) -> TimelineAnswerProgress? {
+                                     evidence: TimelineEvidence,
+                                     claimedKinds: [EvidenceKind] = []) -> TimelineAnswerProgress? {
         let finished = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         // Each streamed partial was checked on its own; the finished text decides what stays.
         guard !finished.isEmpty, allows(finished, evidence: evidence) else {
             return TimelineAnswerProgress(text: evidence.deterministicSummary, toolsUsed: toolsUsed,
                                           source: .facts(reason: "The model's answer did not match the recorded facts."))
         }
-        return finished == shown ? nil : TimelineAnswerProgress(text: finished, toolsUsed: toolsUsed, source: .model)
+        let kinds = keptKinds(claimedKinds, toolsCalled: toolsUsed)
+        guard finished != shown || !kinds.isEmpty else { return nil }
+        return TimelineAnswerProgress(text: finished, toolsUsed: toolsUsed, source: .model, evidenceKinds: kinds)
     }
 
     static let instructions = """
@@ -203,15 +255,14 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
                     return
                 }
                 let log = TimelineToolLog()
-                let session = LanguageModelSession(
-                    tools: Self.tools(for: evidence, log: log),
-                    instructions: TimelineAnswerPolicy.instructions
-                )
+                let session = Self.session(for: evidence, log: log)
                 var shown = ""
                 var raw = ""
+                var claimed: [EvidenceKind] = []
                 do {
                     for try await snapshot in session.streamResponse(to: question, generating: TimelineAnswerPayload.self) {
                         try Task.checkCancellation()
+                        if let kinds = snapshot.content.evidenceKinds { claimed = kinds.map(\.kind) }
                         guard let text = snapshot.content.answer else { continue }
                         raw = text
                         guard text != shown, TimelineAnswerPolicy.allows(text, evidence: evidence) else { continue }
@@ -219,7 +270,7 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
                         continuation.yield(TimelineAnswerProgress(text: text, toolsUsed: log.names, source: .model))
                     }
                     if let final = TimelineAnswerPolicy.finalProgress(raw: raw, shown: shown, toolsUsed: log.names,
-                                                                      evidence: evidence) {
+                                                                      evidence: evidence, claimedKinds: claimed) {
                         continuation.yield(final)
                     }
                     continuation.finish()
@@ -235,6 +286,16 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// iOS 27: a dynamic profile keyed on the trail. iOS 26: the same tools, chosen up front.
+    static func session(for evidence: TimelineEvidence, log: TimelineToolLog) -> LanguageModelSession {
+        #if compiler(>=6.4)
+        if #available(macOS 27, iOS 27, *) {
+            return LanguageModelSession(profile: TimelineDynamicProfile(state: TimelineProfileState(evidence: evidence), log: log))
+        }
+        #endif
+        return LanguageModelSession(tools: tools(for: evidence, log: log), instructions: TimelineAnswerPolicy.instructions)
     }
 
     /// The tools named by `TimelineTools.names(for:)` for the evidence's trail, in that order.
@@ -271,7 +332,63 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
 struct TimelineAnswerPayload {
     @Guide(description: "Two or three short sentences using only facts returned by the tools.")
     var answer: String
+    @Guide(description: "Which kinds of evidence the answer used.")
+    var evidenceKinds: [PayloadEvidenceKind]
 }
+
+@available(macOS 26, iOS 26, *)
+@Generable
+enum PayloadEvidenceKind {
+    case photoActivity
+    case screenshot
+
+    var kind: EvidenceKind {
+        switch self {
+        case .photoActivity: .photoActivity
+        case .screenshot: .screenshot
+        }
+    }
+}
+
+#if compiler(>=6.4)
+/// Mirrors `JourneyDynamicProfile`: one profile per trail, reading an immutable snapshot.
+@available(macOS 27, iOS 27, *)
+struct TimelineDynamicProfile: LanguageModelSession.DynamicProfile {
+    let state: TimelineProfileState
+    let log: TimelineToolLog
+
+    var body: some LanguageModelSession.DynamicProfile {
+        let evidence = state.snapshot
+        if evidence.trail == .travel {
+            LanguageModelSession.Profile {
+                Instructions(TimelineAnswerPolicy.instructions)
+                PhotoActivityTool(evidence: evidence, log: log)
+                AddedScreenshotsTool(evidence: evidence, log: log)
+                BookingsTool(evidence: evidence, log: log)
+            }
+        } else if evidence.trail == .photos {
+            LanguageModelSession.Profile {
+                Instructions(TimelineAnswerPolicy.instructions)
+                PhotoActivityTool(evidence: evidence, log: log)
+                TimelineCountsTool(evidence: evidence, log: log)
+            }
+        } else if evidence.trail == .privacy {
+            LanguageModelSession.Profile {
+                Instructions(TimelineAnswerPolicy.instructions)
+                TimelineCountsTool(evidence: evidence, log: log)
+                RedactionSummaryTool(evidence: evidence, log: log)
+            }
+        } else {
+            LanguageModelSession.Profile {
+                Instructions(TimelineAnswerPolicy.instructions)
+                TimelineCountsTool(evidence: evidence, log: log)
+                PhotoActivityTool(evidence: evidence, log: log)
+                AddedScreenshotsTool(evidence: evidence, log: log)
+            }
+        }
+    }
+}
+#endif
 
 /// Which tools ran during one answer, in order, without repeats.
 final class TimelineToolLog: @unchecked Sendable {

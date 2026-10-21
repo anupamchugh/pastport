@@ -18,6 +18,8 @@ public struct AskTurn: Identifiable, Sendable, Equatable {
     public var status: Status
     /// Set when code, not the model, wrote the answer.
     public var note: String?
+    /// Source labels the answer used, kept only where a matching tool ran.
+    public var evidenceKinds: [EvidenceKind] = []
 
     public init(id: UUID = UUID(), prompt: String, answer: String = "", toolsUsed: [String] = [],
                 status: Status = .answering, note: String? = nil) {
@@ -603,6 +605,7 @@ public final class TimelineModel {
                 update(turnID) {
                     $0.answer = progress.text
                     $0.toolsUsed = progress.toolsUsed
+                    $0.evidenceKinds = progress.evidenceKinds
                     if case .facts(let reason) = progress.source { $0.note = reason }
                 }
             }

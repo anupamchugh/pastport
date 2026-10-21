@@ -135,4 +135,45 @@ struct TimelineAssistantTests {
     @Test func overviewKeepsTodaysThreeTools() {
         #expect(TimelineTools.names(for: .overview) == ["timeline_counts", "photo_activity", "added_screenshots"])
     }
+
+    // MARK: Evidence kinds and profile state (slice 15)
+
+    @Test func aClaimedKindWithNoMatchingToolCallIsDropped() throws {
+        #expect(TimelineAnswerPolicy.keptKinds([.photoActivity, .screenshot], toolsCalled: ["photo_activity"]) == [.photoActivity])
+        #expect(TimelineAnswerPolicy.keptKinds([.screenshot], toolsCalled: ["timeline_counts"]).isEmpty)
+        let facts = evidence()
+        let final = try #require(TimelineAnswerPolicy.finalProgress(
+            raw: "You took 2 photos.", shown: "You took 2 photos.", toolsUsed: ["photo_activity"],
+            evidence: facts, claimedKinds: [.photoActivity, .screenshot]))
+        #expect(final.evidenceKinds == [.photoActivity])
+        #expect(final.source == .model)
+    }
+
+    @Test func theNumberCheckStillReplacesABadAnswerWithTheSummary() throws {
+        let facts = evidence()
+        let final = try #require(TimelineAnswerPolicy.finalProgress(
+            raw: "You took 40 photos.", shown: "", toolsUsed: ["photo_activity"],
+            evidence: facts, claimedKinds: [.photoActivity]))
+        #expect(final.text == facts.deterministicSummary)
+        #expect(final.evidenceKinds.isEmpty)
+        #expect(final.source == .facts(reason: "The model's answer did not match the recorded facts."))
+    }
+
+    @Test func profileStatePublishesOneCoherentSnapshot() async {
+        let photos = evidence()
+        let state = TimelineProfileState(evidence: photos)
+        var privacy = photos
+        privacy.trail = .privacy
+        privacy.screenshots = [AddedScreenshot(name: "A", evidence: ScreenshotScrubber.scrub(["Gate 4"]))]
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<200 {
+                group.addTask { state.update(i.isMultiple(of: 2) ? photos : privacy) }
+                group.addTask {
+                    let snapshot = state.snapshot
+                    // Trail and screenshots always come from the same update.
+                    #expect(snapshot == photos || snapshot == privacy)
+                }
+            }
+        }
+    }
 }
