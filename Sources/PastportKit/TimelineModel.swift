@@ -58,6 +58,9 @@ public final class TimelineModel {
         case connected
     }
 
+    /// The window choices on iPhone and iPad. "All retained" stays a Mac choice.
+    public static let iPhoneWindows = [7, 30, 90, 365]
+
     public var tab: Tab = .trail
     public var days = 90 {
         didSet {
@@ -126,6 +129,11 @@ public final class TimelineModel {
     /// Observed: `canExport` reads it.
     var visits: [Visit] = []
 
+    /// The honest photo line for iPhone and iPad (spec section 2): ordinary photos are checked
+    /// on device for scene labels; only screenshots are counted without being read.
+    public static let photoCopy = "Photos are checked on this iPhone for scene labels, such as beach or food. Nothing leaves the device and no photo is kept. Screenshots are counted only. Photos stored only in iCloud are skipped."
+    public static let safariCopy = "iOS does not let apps read Safari history, so Pastport does not."
+    public static let offlineCopy = "Offline is fine. Timeline, Ask and screenshots run on this iPhone. Only Connected tools need a connection."
     public static let unlockFailed = "Could not unlock. Nothing was read."
     static let photosClosed = "Photos are closed. Read activity when you choose."
     static let screenshotsClosed = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
@@ -138,7 +146,9 @@ public final class TimelineModel {
         authenticator: any Authenticating = DeviceAuthenticator(),
         timelineAnswerer: any TimelineAnswering = FoundationTimelineAnswerer(),
         localModels: LocalModels? = nil,
-        appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady }) {
+        appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady },
+        days: Int = 90) {
+        self.days = days
         self.history = history
         self.photos = photos
         self.screenshotReader = screenshotReader

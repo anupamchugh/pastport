@@ -4,7 +4,7 @@ import SwiftUI
 
 @main
 struct PastportApp: App {
-    @State private var model = TimelineModel(history: nil)
+    @State private var model = TimelineModel(history: nil, days: 30)
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -59,23 +59,24 @@ struct TimelineScreen: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
-                HomeView(model: model)
+            Group {
+                if model.isLocked {
+                    LockedTimelineView(model: model)
+                } else {
+                    VStack(spacing: 0) {
+                        SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
+                        HomeView(model: model)
+                    }
+                }
             }
             .id(model.contentID)
-            .navigationTitle(model.hasContent ? "Pastport" : "")
+            .navigationTitle(model.isLocked ? "" : "Timeline")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        WindowPicker(days: $model.days)
-                        Divider()
+                if !model.isLocked {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Lock and clear", systemImage: "lock") { model.lockAndClear() }
-                            .disabled(!model.hasContent)
-                    } label: {
-                        Label("More", systemImage: "ellipsis.circle")
+                            .disabled(model.busy)
                     }
-                    .disabled(model.busy)
                 }
             }
         }

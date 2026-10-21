@@ -330,6 +330,18 @@ struct TimelineModelTests {
         #expect(model.photoEvents.isEmpty)
     }
 
+    // MARK: Locked screen (slice 5)
+
+    @Test func iPhoneWindowsAreTheFourChipsWithoutAll() {
+        #expect(TimelineModel.iPhoneWindows == [7, 30, 90, 365])
+        let (model, _) = lockedModel()
+        #expect(model.days == 90, "the Mac default is unchanged")
+        let phone = TimelineModel(history: nil, photos: NoPhotos(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false }, days: 30)
+        #expect(phone.days == 30)
+        #expect(phone.isLocked)
+    }
+
     @Test func screenshotFinishingAfterALockIsDropped() async throws {
         let gate = Gate()
         let reader = ScreenshotReader { _ in ["Receipt"] }
