@@ -22,12 +22,16 @@ public struct TimelineEvidence: Sendable, Equatable {
     public var screenshots: [AddedScreenshot]
     /// False on iPhone and iPad: iOS does not let apps read Safari history.
     public var historyAvailable: Bool
+    /// The trail open when the question was asked; it decides which tools the model gets.
+    public var trail: TimelineTrail
 
-    public init(window: String, photoEvents: [PhotoEvent], screenshots: [AddedScreenshot], historyAvailable: Bool) {
+    public init(window: String, photoEvents: [PhotoEvent], screenshots: [AddedScreenshot], historyAvailable: Bool,
+                trail: TimelineTrail = .overview) {
         self.window = window
         self.photoEvents = photoEvents
         self.screenshots = screenshots
         self.historyAvailable = historyAvailable
+        self.trail = trail
     }
 
     public var isEmpty: Bool { photoEvents.isEmpty && screenshots.isEmpty }
@@ -71,7 +75,19 @@ public struct TimelineEvidence: Sendable, Equatable {
             + "hidden across \(screenshots.count) added screenshots"
     }
 
-    public var lines: [String] { [countsLine] + photoLines + screenshotLines + [redactionSummary] }
+    /// Bookings found in added screenshots: kind, date and title line.
+    public var bookingLines: [String] {
+        let found = screenshots.enumerated().compactMap { index, shot in
+            BookingFromScreenshot.detect(shot.evidence).map { (index, $0) }
+        }
+        guard !found.isEmpty else { return ["bookings: none found in added screenshots"] }
+        return found.map { index, booking in
+            "bookings: #\(index + 1) \(booking.kind.rawValue) dated "
+                + booking.date.formatted(date: .abbreviated, time: .omitted) + ": " + booking.title
+        }
+    }
+
+    public var lines: [String] { [countsLine] + photoLines + screenshotLines + [redactionSummary] + bookingLines }
 
     /// The answer when no model runs. Every number comes from the lines above.
     public var deterministicSummary: String {
@@ -115,6 +131,28 @@ public struct TimelineAnswerProgress: Sendable, Equatable {
 /// The seam between the timeline and a language model. Tests use a fake.
 public protocol TimelineAnswering: Sendable {
     func answer(_ question: String, evidence: TimelineEvidence) -> AsyncThrowingStream<TimelineAnswerProgress, any Error>
+}
+
+/// Which read-only tools the model gets on each trail. Shared by the iOS 26 and iOS 27 paths.
+public enum TimelineTools {
+    public static let counts = "timeline_counts"
+    public static let photoActivity = "photo_activity"
+    public static let addedScreenshots = "added_screenshots"
+    public static let bookings = "bookings"
+    public static let redactionSummary = "redaction_summary"
+
+    /// Privacy gets counts only: no tool that returns screenshot text.
+    public static func names(for trail: TimelineTrail) -> [String] {
+        switch trail {
+        case .overview: [counts, photoActivity, addedScreenshots]
+        case .travel: [photoActivity, addedScreenshots, bookings]
+        case .photos: [photoActivity, counts]
+        case .privacy: [counts, redactionSummary]
+        }
+    }
+
+    /// Tools whose output includes text read from a screenshot.
+    public static let screenshotText: Set<String> = [addedScreenshots, bookings]
 }
 
 /// Code-side checks shared by every timeline answer.
@@ -166,11 +204,7 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
                 }
                 let log = TimelineToolLog()
                 let session = LanguageModelSession(
-                    tools: [
-                        TimelineCountsTool(evidence: evidence, log: log),
-                        PhotoActivityTool(evidence: evidence, log: log),
-                        AddedScreenshotsTool(evidence: evidence, log: log),
-                    ],
+                    tools: Self.tools(for: evidence, log: log),
                     instructions: TimelineAnswerPolicy.instructions
                 )
                 var shown = ""
@@ -200,6 +234,19 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// The tools named by `TimelineTools.names(for:)` for the evidence's trail, in that order.
+    static func tools(for evidence: TimelineEvidence, log: TimelineToolLog) -> [any Tool] {
+        TimelineTools.names(for: evidence.trail).map { name -> any Tool in
+            switch name {
+            case TimelineTools.counts: TimelineCountsTool(evidence: evidence, log: log)
+            case TimelineTools.photoActivity: PhotoActivityTool(evidence: evidence, log: log)
+            case TimelineTools.addedScreenshots: AddedScreenshotsTool(evidence: evidence, log: log)
+            case TimelineTools.bookings: BookingsTool(evidence: evidence, log: log)
+            default: RedactionSummaryTool(evidence: evidence, log: log)
+            }
         }
     }
 
@@ -284,6 +331,35 @@ struct AddedScreenshotsTool: Tool {
     func call(arguments: Arguments) async throws -> String {
         log.record(name)
         return evidence.screenshotLines.joined(separator: "\n")
+    }
+}
+@available(macOS 26, iOS 26, *)
+struct BookingsTool: Tool {
+    let name = TimelineTools.bookings
+    let description = "Bookings found in screenshots the person added: kind, date and the first line. A booking screenshot does not prove the trip happened."
+    let evidence: TimelineEvidence
+    let log: TimelineToolLog
+
+    @Generable struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        log.record(name)
+        return evidence.bookingLines.joined(separator: "\n")
+    }
+}
+
+@available(macOS 26, iOS 26, *)
+struct RedactionSummaryTool: Tool {
+    let name = TimelineTools.redactionSummary
+    let description = "How many emails, one-time codes and card numbers were hidden in added screenshots. Counts only, no text."
+    let evidence: TimelineEvidence
+    let log: TimelineToolLog
+
+    @Generable struct Arguments {}
+
+    func call(arguments: Arguments) async throws -> String {
+        log.record(name)
+        return evidence.redactionSummary
     }
 }
 #endif

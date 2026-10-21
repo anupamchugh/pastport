@@ -301,7 +301,7 @@ public final class TimelineModel {
 
     public var timelineEvidence: TimelineEvidence {
         TimelineEvidence(window: windowTitle, photoEvents: photoEvents, screenshots: screenshots,
-                         historyAvailable: canReadHistory)
+                         historyAvailable: canReadHistory, trail: trail)
     }
 
     /// The cards for the open trail, built by code from what was read.

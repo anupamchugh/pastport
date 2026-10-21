@@ -119,4 +119,20 @@ struct TimelineAssistantTests {
             #expect(!summary.contains(text), "\(text)")
         }
     }
+
+    // MARK: Tools per trail (slice 14)
+
+    @Test func privacyGetsNoScreenshotTextTool() {
+        let names = TimelineTools.names(for: .privacy)
+        #expect(TimelineTools.screenshotText.isDisjoint(with: names))
+        #expect(names.contains(TimelineTools.redactionSummary))
+    }
+
+    @Test func travelIncludesBookings() {
+        #expect(TimelineTools.names(for: .travel).contains("bookings"))
+    }
+
+    @Test func overviewKeepsTodaysThreeTools() {
+        #expect(TimelineTools.names(for: .overview) == ["timeline_counts", "photo_activity", "added_screenshots"])
+    }
 }
