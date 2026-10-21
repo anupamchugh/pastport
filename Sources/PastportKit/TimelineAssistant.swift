@@ -305,7 +305,7 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
             case TimelineTools.counts: return TimelineCountsTool(evidence: evidence, log: log)
             case TimelineTools.photoActivity: return PhotoActivityTool(evidence: evidence, log: log)
             case TimelineTools.addedScreenshots: return AddedScreenshotsTool(evidence: evidence, log: log)
-            case TimelineTools.bookings: return BookingsTool(evidence: evidence, log: log)
+            case TimelineTools.bookings: return TimelineBookingsTool(evidence: evidence, log: log)
             default: return RedactionSummaryTool(evidence: evidence, log: log)
             }
         }
@@ -364,7 +364,7 @@ struct TimelineDynamicProfile: LanguageModelSession.DynamicProfile {
                 Instructions(TimelineAnswerPolicy.instructions)
                 PhotoActivityTool(evidence: evidence, log: log)
                 AddedScreenshotsTool(evidence: evidence, log: log)
-                BookingsTool(evidence: evidence, log: log)
+                TimelineBookingsTool(evidence: evidence, log: log)
             }
         } else if evidence.trail == .photos {
             LanguageModelSession.Profile {
@@ -451,7 +451,7 @@ struct AddedScreenshotsTool: Tool {
     }
 }
 @available(macOS 26, iOS 26, *)
-struct BookingsTool: Tool {
+struct TimelineBookingsTool: Tool {
     let name = TimelineTools.bookings
     let description = "Bookings found in screenshots the person added: kind, date and the first line. A booking screenshot does not prove the trip happened."
     let evidence: TimelineEvidence
