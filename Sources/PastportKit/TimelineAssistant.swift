@@ -63,7 +63,15 @@ public struct TimelineEvidence: Sendable, Equatable {
         }
     }
 
-    public var lines: [String] { [countsLine] + photoLines + screenshotLines }
+    /// Hidden items by kind across the added screenshots. Counts only; never the hidden text,
+    /// and no screenshot text at all, so the Privacy trail can use it alone.
+    public var redactionSummary: String {
+        let total = screenshots.map(\.evidence.redactions).reduce(.none, +)
+        return "redactions: \(total.email) email addresses, \(total.otp) one-time codes, \(total.card) card numbers "
+            + "hidden across \(screenshots.count) added screenshots"
+    }
+
+    public var lines: [String] { [countsLine] + photoLines + screenshotLines + [redactionSummary] }
 
     /// The answer when no model runs. Every number comes from the lines above.
     public var deterministicSummary: String {

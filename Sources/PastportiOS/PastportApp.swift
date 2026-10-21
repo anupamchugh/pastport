@@ -52,6 +52,9 @@ struct RootView: View {
                 Tab("Add", systemImage: "plus.viewfinder", value: TimelineModel.Tab.add) {
                     AddScreen(model: model)
                 }
+                Tab("Privacy", systemImage: "hand.raised", value: TimelineModel.Tab.privacy) {
+                    PrivacyScreen(model: model)
+                }
             }
         }
     }

@@ -97,4 +97,26 @@ struct TimelineAssistantTests {
         #expect(FoundationTimelineAnswerer.reason(for: .available).isEmpty)
     }
 #endif
+
+    // MARK: Redaction summary (slice 12)
+
+    @Test func redactionSummaryCountsByKind() {
+        let shots = [
+            AddedScreenshot(name: "A", evidence: ScreenshotScrubber.scrub(["alice@example.test", "bob@example.test"])),
+            AddedScreenshot(name: "B", evidence: ScreenshotScrubber.scrub(["OTP 482913", "Card 4111 1111 1111 1111"])),
+        ]
+        #expect(evidence(screenshots: shots).redactionSummary
+                == "redactions: 2 email addresses, 1 one-time codes, 1 card numbers hidden across 2 added screenshots")
+        #expect(evidence().redactionSummary.hasPrefix("redactions: 0 email addresses, 0 one-time codes, 0 card numbers"))
+    }
+
+    @Test func redactionSummaryNeverContainsScreenshotText() {
+        let shot = AddedScreenshot(name: "A", evidence: ScreenshotScrubber.scrub([
+            "Ferry Gate 4", "alice@example.test", "OTP 482913",
+        ]))
+        let summary = evidence(screenshots: [shot]).redactionSummary
+        for text in ["Ferry", "Gate", "alice", "482913", "[EMAIL]"] {
+            #expect(!summary.contains(text), "\(text)")
+        }
+    }
 }
