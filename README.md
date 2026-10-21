@@ -36,7 +36,7 @@ brew install xcodegen
 ./install.sh
 ```
 
-The app starts with history and Photos closed. Choose **Read history**, then grant Full Disk Access to the app in System Settings if needed. Photos are optional: **Photo activity → Read photo activity** authenticates first and asks for Photos access only when you choose. It reads up to 500 local images, classifies ordinary photos on-device, and counts screenshots without inspecting their pixels. No iCloud image downloads are requested.
+The app starts with history and Photos closed. Choose **Read history**, then grant Full Disk Access to the app in System Settings if needed. Photos are optional: **Photo activity → Read photo activity** authenticates first and asks for Photos access only when you choose. It reads up to 500 local images, checks ordinary photos on the device for scene labels (such as beach or food; nothing leaves the device and no photo is kept), and counts screenshots from metadata only, without reading their pixels. Photos stored only in iCloud are counted without labels and are never downloaded.
 
 Choose **All retained history** in the model/window menu to remove the date cutoff. The coverage line shows unique visits, discovered Safari sources, retained dates, and whether the safety cap was reached. A failed source fails the read; a capped result is labelled partial. Safari may have already deleted older history, so this is not a lifetime record.
 

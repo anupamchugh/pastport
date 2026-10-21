@@ -41,7 +41,7 @@ public enum PhotoEvents {
     /// The line shown after a photo read: what the read covered, the newest-500 cut when the
     /// window held more, and the limited-access note. Counts come from data, never a model.
     public static func statusLine(for read: PhotoRead) -> String {
-        var lines = ["Local Photos · up to 500 images; screenshots counted only"]
+        var lines = ["Photos are checked on this device for scene labels; screenshots are counted only. Up to 500 images."]
         if read.isTruncated {
             lines.append("Showing the newest \(read.records.count) of \(read.totalInWindow) photos in this window")
         }

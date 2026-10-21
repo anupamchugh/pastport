@@ -230,6 +230,18 @@ struct TimelineModelTests {
         #expect(model.photoEvents.count == 1)
     }
 
+    @Test func photoStatusSaysScenesAreCheckedOnThePhoneAndNeverClaimsPhotosAreUnopened() async throws {
+        let gate = Gate()
+        await gate.open()
+        let model = TimelineModel(history: nil, photos: GatedPhotos(gate: gate), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.readPhotos()
+        try await waitUntil { !model.busy && !model.photoEvents.isEmpty }
+        #expect(model.photoStatus.contains("scene labels"))
+        #expect(!model.photoStatus.lowercased().contains("never"))
+        #expect(!model.photoStatus.lowercased().contains("not inspected"))
+    }
+
     @Test func screenshotFinishingAfterALockIsDropped() async throws {
         let gate = Gate()
         let reader = ScreenshotReader { _ in ["Receipt"] }
