@@ -218,10 +218,10 @@ public final class TimelineModel {
                 guard result == .unlocked else { photoStatus = "Authentication cancelled — Photos kept closed."; return }
                 await photos.requestAccess()
                 guard token == generation, !Task.isCancelled else { return }
-                let records = try await photos.records(since: since, limit: 500)
+                let photoRead = try await photos.read(since: since, limit: 500)
                 guard token == generation, !Task.isCancelled else { return }
-                photoEvents = PhotoEvents.cluster(records)
-                photoStatus = "Local Photos · up to 500 images; screenshots counted only"
+                photoEvents = PhotoEvents.cluster(photoRead.records)
+                photoStatus = PhotoEvents.statusLine(for: photoRead)
             } catch is CancellationError {
             } catch let error as PhotoLibraryError {
                 guard token == generation else { return }
