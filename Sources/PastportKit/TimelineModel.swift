@@ -70,6 +70,8 @@ public final class TimelineModel {
         }
     }
     public var assistantSource: AssistantSource = .evidence
+    /// The open iPhone trail. Resets to Overview on every lock.
+    public var trail: TimelineTrail = .overview
     public internal(set) var historyFocus: HistoryFocus = .overview
     public internal(set) var recommendedFocuses: [HistoryFocus] = [.overview]
     public internal(set) var suggestedQuestions: [String] = []
@@ -197,6 +199,7 @@ public final class TimelineModel {
         coverage = ""; profile = ""; journeyReceipt = nil
         sites = []; trackerSignals = []; historyLoaded = false
         historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
+        trail = .overview
         let oldJourney = journey; journey = nil
         activeAnswerID = nil
         Task { await oldJourney?.clear() }
@@ -294,6 +297,11 @@ public final class TimelineModel {
     public var timelineEvidence: TimelineEvidence {
         TimelineEvidence(window: windowTitle, photoEvents: photoEvents, screenshots: screenshots,
                          historyAvailable: canReadHistory)
+    }
+
+    /// The cards for the open trail, built by code from what was read.
+    public var evidenceCards: [EvidenceCard] {
+        EvidenceCards.cards(for: trail, photoEvents: photoEvents, screenshots: screenshots, window: windowTitle)
     }
 
     public var windowTitle: String {
