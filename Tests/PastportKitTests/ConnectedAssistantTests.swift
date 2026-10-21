@@ -10,6 +10,11 @@ private final class GenerationBox {
     var value = UUID()
 }
 
+@MainActor
+private final class ReceiptBox {
+    var items: [ConnectedToolReceipt] = []
+}
+
 private actor CallRecorder {
     var count = 0
     func record() { count += 1 }
@@ -150,5 +155,65 @@ struct ConnectedAssistantTests {
             #expect(error as? ConnectedToolApprovalError == .staleGeneration)
         }
         #expect(await recorder.count == 0)
+    }
+
+    // MARK: Tiers (slice 13)
+
+    @Test("every built-in tool has a tier")
+    func everyToolHasATier() {
+        for tool in FoundationLabBuiltInTool.allCases {
+            let tier = ConnectedAssistantPolicy.tier(for: tool)
+            #expect([ConnectedToolTier.onDevice, .mixed, .offDevice].contains(tier), "\(tool)")
+        }
+        #expect(Set(FoundationLabBuiltInTool.allCases.map { ConnectedAssistantPolicy.tier(for: $0) }).count == 3)
+    }
+
+    @Test("weather, web and web metadata send data off the iPhone")
+    func offDeviceTools() {
+        for tool in [FoundationLabBuiltInTool.weather, .web, .webMetadata] {
+            #expect(ConnectedAssistantPolicy.tier(for: tool) == .offDevice)
+            #expect(ConnectedAssistantPolicy.tier(for: tool).label == "Sends data off this iPhone")
+        }
+        #expect(ConnectedAssistantPolicy.tier(for: .music) == .mixed)
+        #expect(ConnectedAssistantPolicy.tier(for: .location) == .mixed)
+    }
+
+    @Test("contacts, calendar, reminders and health stay on the device")
+    func onDeviceTools() {
+        for tool in [FoundationLabBuiltInTool.contacts, .calendar, .reminders, .health] {
+            #expect(ConnectedAssistantPolicy.tier(for: tool) == .onDevice)
+            #expect(ConnectedAssistantPolicy.tier(for: tool).label == nil)
+        }
+    }
+
+    @MainActor
+    @Test("no tool is selected until the person chooses one")
+    func toolsStartOff() {
+        #expect(ConnectedAssistant().selectedTools.isEmpty)
+    }
+
+    @MainActor
+    @Test("an approved call leaves a receipt with its arguments")
+    func approvedCallLeavesAReceipt() async throws {
+        let generation = GenerationBox()
+        let recorder = CallRecorder()
+        let coordinator = ConnectedToolApprovalCoordinator()
+        let (events, continuation) = AsyncStream<UUID>.makeStream()
+        var iterator = events.makeAsyncIterator()
+        await coordinator.setRequestHandler { request in continuation.yield(request.id) }
+        let receipts = ReceiptBox()
+        let tool = ApprovedTool(
+            base: FakeConnectedTool(recorder: recorder), approval: coordinator,
+            generationProvider: { generation.value }, destination: "Test", service: "Injected fake",
+            receipt: { receipts.items.append($0) }
+        )
+        let pending = Task { try await tool.call(arguments: FakeToolArguments(value: "ferry")) }
+        let id = try #require(await iterator.next())
+        await coordinator.resolve(id, approved: true)
+        _ = try await pending.value
+        #expect(await recorder.count == 1)
+        let receipt = try #require(receipts.items.first)
+        #expect(receipt.status == .completed)
+        #expect(receipt.arguments.contains("ferry"))
     }
 }

@@ -56,8 +56,13 @@ public struct ConnectedAssistantView: View {
                     Button {
                         model.toggleTool(tool)
                     } label: {
-                        Label(tool.displayName, systemImage: tool.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label(tool.displayName, systemImage: tool.systemImage)
+                            if let label = ConnectedAssistantPolicy.tier(for: tool).label {
+                                Text(label).font(.caption2).foregroundStyle(.orange)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.bordered)
                     .tint(model.selectedTools.contains(tool) ? .accentColor : .secondary)
@@ -71,6 +76,7 @@ public struct ConnectedAssistantView: View {
                                 .padding(.trailing, 8)
                         }
                     }
+
                 }
             }
         }
@@ -170,6 +176,10 @@ private struct ConnectedToolApprovalSheet: View {
             Text("Pastport will share this exact request with the selected service. This session has no Safari history attached.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            if let label = ConnectedAssistantPolicy.tier(forDestination: request.destination)?.label {
+                Label(label, systemImage: "arrow.up.forward.app")
+                    .font(.callout.weight(.medium)).foregroundStyle(.orange)
+            }
             detail("Tool", request.toolName)
             detail("Destination", request.destination)
             detail("Service", request.service)
