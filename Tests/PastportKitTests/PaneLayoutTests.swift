@@ -5,18 +5,24 @@ import Testing
 struct PaneLayoutTests {
     @Test func compactShowsOnePane() {
         for tab in TimelineModel.Tab.allCases {
-            #expect(PaneLayout.panes(for: tab, width: 393) == [tab])
+            #expect(PaneLayout.panes(for: tab, isRegularWidth: false) == [tab])
         }
-        #expect(PaneLayout.panes(for: .ask, width: PaneLayout.twoPaneMinimumWidth - 1) == [.ask])
     }
 
-    @Test func wideTimelineAndAskShareTheScreen() {
-        #expect(PaneLayout.panes(for: .trail, width: 900) == [.trail, .ask])
-        #expect(PaneLayout.panes(for: .ask, width: PaneLayout.twoPaneMinimumWidth) == [.trail, .ask])
+    @Test func regularTimelineAndAskShareTheScreen() {
+        #expect(PaneLayout.panes(for: .trail, isRegularWidth: true) == [.trail, .ask])
+        #expect(PaneLayout.panes(for: .ask, isRegularWidth: true) == [.trail, .ask])
     }
 
-    @Test func wideAddAndPrivacyShareTheScreen() {
-        #expect(PaneLayout.panes(for: .add, width: 1024) == [.add, .privacy])
-        #expect(PaneLayout.panes(for: .privacy, width: 1024) == [.add, .privacy])
+    @Test func regularAddAndPrivacyShareTheScreen() {
+        #expect(PaneLayout.panes(for: .add, isRegularWidth: true) == [.add, .privacy])
+        #expect(PaneLayout.panes(for: .privacy, isRegularWidth: true) == [.add, .privacy])
+    }
+
+    @Test func foldingAndUnfoldingKeepsTheSelectedTab() {
+        // The selected tab is model state; only the pane set changes with width.
+        for tab in TimelineModel.Tab.allCases {
+            #expect(PaneLayout.panes(for: tab, isRegularWidth: true).contains(tab))
+        }
     }
 }

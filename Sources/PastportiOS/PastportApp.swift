@@ -29,32 +29,50 @@ struct PastportApp: App {
     }
 }
 
-/// One tab on a narrow width; on a wide one, `PaneLayout` pairs Timeline with Ask and Add
-/// with Privacy, with the tab rail on the trailing edge. Width comes from the container.
+/// One tab at compact width; at regular width `PaneLayout` pairs Timeline with Ask and Add with
+/// Privacy. The selected tab lives in the model, so folding and unfolding keeps it. The tab bar is
+/// the system's (`sidebarAdaptable`), which the system moves aside on the Duo's outer display.
 struct RootView: View {
     @Bindable var model: TimelineModel
-    @State private var width: Double = 0
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        let panes = PaneLayout.panes(for: model.tab, width: width)
-        Group {
-            if panes.count == 2 {
+        TabView(selection: $model.tab) {
+            ForEach(TimelineModel.Tab.allCases) { tab in
+                Tab(tab.title, systemImage: tab.symbol, value: tab) {
+                    Panes(model: model, panes: PaneLayout.panes(for: tab, isRegularWidth: horizontalSizeClass == .regular))
+                }
+            }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+    }
+}
+
+/// One pane, or two side by side. The pair uses the system arrangement view where it exists
+/// (iOS 27.1), which keeps both panes clear of the Duo's fold; earlier systems get a plain split.
+private struct Panes: View {
+    var model: TimelineModel
+    var panes: [TimelineModel.Tab]
+
+    var body: some View {
+        if panes.count == 2 {
+            if #available(iOS 27.1, *) {
+                ArrangementView {
+                    pane(panes[0])
+                } secondary: {
+                    pane(panes[1])
+                }
+                .arrangementViewStyle(.split.axes(.horizontal))
+            } else {
                 HStack(spacing: 0) {
                     pane(panes[0]).frame(maxWidth: .infinity)
                     Divider()
                     pane(panes[1]).frame(maxWidth: .infinity)
-                    Divider()
-                    TabRail(tab: $model.tab)
-                }
-            } else {
-                TabView(selection: $model.tab) {
-                    ForEach(TimelineModel.Tab.allCases) { tab in
-                        Tab(tab.title, systemImage: tab.symbol, value: tab) { pane(tab) }
-                    }
                 }
             }
+        } else {
+            pane(panes[0])
         }
-        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width = $0 }
     }
 
     @ViewBuilder private func pane(_ tab: TimelineModel.Tab) -> some View {
@@ -64,31 +82,6 @@ struct RootView: View {
         case .add: AddScreen(model: model)
         case .privacy: PrivacyScreen(model: model)
         }
-    }
-}
-
-/// The wide-layout tab rail: icon above a short label, 62 points wide.
-private struct TabRail: View {
-    @Binding var tab: TimelineModel.Tab
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ForEach(TimelineModel.Tab.allCases) { item in
-                Button { tab = item } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: item.symbol).font(.title3)
-                        Text(item.title).font(.caption2)
-                    }
-                    .frame(width: 62, height: 56)
-                    .foregroundStyle(item == tab ? Color.accentColor : .secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(item == tab ? .isSelected : [])
-            }
-            Spacer()
-        }
-        .padding(.top, 12)
-        .frame(width: 62)
     }
 }
 
