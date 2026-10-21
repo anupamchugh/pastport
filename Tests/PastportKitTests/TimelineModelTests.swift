@@ -342,6 +342,20 @@ struct TimelineModelTests {
         #expect(phone.isLocked)
     }
 
+    // MARK: Add tab (slice 11)
+
+    @Test func iPhoneTabsAreTimelineAskAddPrivacy() {
+        #expect(TimelineModel.Tab.allCases == [.trail, .ask, .add, .privacy])
+        #expect(TimelineModel.Tab.macTabs == [.trail, .ask])
+    }
+
+    @Test func aScreenshotWithNoTextSaysNoTextFound() async throws {
+        let (model, _) = lockedModel(reader: ScreenshotReader { _ in [] })
+        model.addScreenshot(data: Data([0x1]), name: "Blank")
+        try await waitUntil { model.screenshotStatus == TimelineModel.noTextFound }
+        #expect(model.screenshotStatus == "No text found. Try a clearer screenshot.")
+    }
+
     @Test func screenshotFinishingAfterALockIsDropped() async throws {
         let gate = Gate()
         let reader = ScreenshotReader { _ in ["Receipt"] }

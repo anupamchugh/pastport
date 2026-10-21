@@ -47,10 +47,15 @@ public struct LocalModels: Sendable {
 @MainActor
 @Observable
 public final class TimelineModel {
+    /// iPhone and iPad show all four tabs; the Mac shows `macTabs`.
     public enum Tab: String, CaseIterable, Identifiable, Sendable {
         case trail = "Home"
         case ask = "Ask"
+        case add = "Add"
+        case privacy = "Privacy"
         public var id: String { rawValue }
+
+        public static let macTabs: [Tab] = [.trail, .ask]
     }
 
     public enum AssistantSource: String, CaseIterable, Sendable {
@@ -136,6 +141,7 @@ public final class TimelineModel {
     public static let photoCopy = "Photos are checked on this iPhone for scene labels, such as beach or food. Nothing leaves the device and no photo is kept. Screenshots are counted only. Photos stored only in iCloud are skipped."
     public static let safariCopy = "iOS does not let apps read Safari history, so Pastport does not."
     public static let offlineCopy = "Offline is fine. Timeline, Ask and screenshots run on this iPhone. Only Connected tools need a connection."
+    public static let noTextFound = "No text found. Try a clearer screenshot."
     public static let unlockFailed = "Could not unlock. Nothing was read."
     static let photosClosed = "Photos are closed. Read activity when you choose."
     static let screenshotsClosed = "Add a screenshot of a booking or receipt. Its text is read on this device and emails, codes and card numbers are hidden."
@@ -269,10 +275,9 @@ public final class TimelineModel {
             do {
                 let evidence = try await reader.read(imageData: data)
                 guard token == generation else { return }
+                guard !evidence.scrubbedLines.isEmpty else { screenshotStatus = Self.noTextFound; return }
                 screenshots.append(AddedScreenshot(name: name, evidence: evidence))
-                screenshotStatus = evidence.scrubbedLines.isEmpty
-                    ? "No text was found in that image."
-                    : "Screenshot read · \(evidence.redactionCount) item\(evidence.redactionCount == 1 ? "" : "s") hidden"
+                screenshotStatus = "Screenshot read · \(evidence.redactionCount) item\(evidence.redactionCount == 1 ? "" : "s") hidden"
             } catch {
                 guard token == generation else { return }
                 screenshotStatus = "That image could not be read."

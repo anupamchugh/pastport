@@ -43,11 +43,14 @@ struct RootView: View {
             }
         } else {
             TabView(selection: $model.tab) {
-                Tab("Home", systemImage: "house", value: TimelineModel.Tab.trail) {
+                Tab("Timeline", systemImage: "clock.arrow.circlepath", value: TimelineModel.Tab.trail) {
                     TimelineScreen(model: model)
                 }
                 Tab("Ask", systemImage: "bubble.left.and.text.bubble.right", value: TimelineModel.Tab.ask) {
                     AskScreen(model: model)
+                }
+                Tab("Add", systemImage: "plus.viewfinder", value: TimelineModel.Tab.add) {
+                    AddScreen(model: model)
                 }
             }
         }
