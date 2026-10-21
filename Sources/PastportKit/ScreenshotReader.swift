@@ -26,22 +26,45 @@ public enum ScreenshotKind: String, Equatable, Sendable {
     }
 }
 
+/// How many items of each kind were hidden in one screenshot. Counts only; never the text.
+public struct RedactionCounts: Equatable, Sendable {
+    public var email: Int
+    public var otp: Int
+    public var card: Int
+
+    public init(email: Int = 0, otp: Int = 0, card: Int = 0) {
+        self.email = email
+        self.otp = otp
+        self.card = card
+    }
+
+    public static let none = RedactionCounts()
+
+    public var total: Int { email + otp + card }
+
+    public static func + (lhs: RedactionCounts, rhs: RedactionCounts) -> RedactionCounts {
+        RedactionCounts(email: lhs.email + rhs.email, otp: lhs.otp + rhs.otp, card: lhs.card + rhs.card)
+    }
+}
+
 /// OCR evidence that is safe to hand to later deterministic or model-backed stages.
 ///
 /// Raw recognized text is deliberately not representable by this type.
 public struct ScreenshotEvidence: Equatable, Sendable {
     let lines: [String]
-    public let redactionCount: Int
+    public let redactions: RedactionCounts
     public let kind: ScreenshotKind
+
+    public var redactionCount: Int { redactions.total }
 
     /// Recognized text after emails, one-time codes and card numbers were replaced.
     public var scrubbedLines: [String] { lines }
 
     var text: String { lines.joined(separator: "\n") }
 
-    init(lines: [String], redactionCount: Int, kind: ScreenshotKind) {
+    init(lines: [String], redactions: RedactionCounts, kind: ScreenshotKind) {
         self.lines = lines
-        self.redactionCount = redactionCount
+        self.redactions = redactions
         self.kind = kind
     }
 
@@ -129,7 +152,7 @@ enum ScreenshotScrubber {
 
     static func scrub(_ lines: [String]) -> ScreenshotEvidence {
         guard !lines.isEmpty else {
-            return ScreenshotEvidence(lines: [], redactionCount: 0, kind: .unknown)
+            return ScreenshotEvidence(lines: [], redactions: .none, kind: .unknown)
         }
         let text = lines.joined(separator: "\n")
         let (withoutEmails, emailCount) = replacing(email, in: text, with: "[EMAIL]")
@@ -138,7 +161,7 @@ enum ScreenshotScrubber {
         let sanitizedLines = sanitized.components(separatedBy: "\n")
         return ScreenshotEvidence(
             lines: sanitizedLines,
-            redactionCount: emailCount + otpCount + cardCount,
+            redactions: RedactionCounts(email: emailCount, otp: otpCount, card: cardCount),
             kind: ScreenshotKindClassifier.classify(sanitizedLines)
         )
     }
