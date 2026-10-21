@@ -29,33 +29,85 @@ struct PastportApp: App {
     }
 }
 
-/// Tabs on a narrow width; timeline and Ask side by side when there is room.
+/// One tab on a narrow width; on a wide one, `PaneLayout` pairs Timeline with Ask and Add
+/// with Privacy, with the tab rail on the trailing edge. Width comes from the container.
 struct RootView: View {
     @Bindable var model: TimelineModel
-    @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var width: Double = 0
 
     var body: some View {
-        if sizeClass == .regular {
-            HStack(spacing: 0) {
-                TimelineScreen(model: model).frame(minWidth: 320, idealWidth: 420, maxWidth: 480)
-                Divider()
-                AskScreen(model: model)
-            }
-        } else {
-            TabView(selection: $model.tab) {
-                Tab("Timeline", systemImage: "clock.arrow.circlepath", value: TimelineModel.Tab.trail) {
-                    TimelineScreen(model: model)
+        let panes = PaneLayout.panes(for: model.tab, width: width)
+        Group {
+            if panes.count == 2 {
+                HStack(spacing: 0) {
+                    pane(panes[0]).frame(maxWidth: .infinity)
+                    Divider()
+                    pane(panes[1]).frame(maxWidth: .infinity)
+                    Divider()
+                    TabRail(tab: $model.tab)
                 }
-                Tab("Ask", systemImage: "bubble.left.and.text.bubble.right", value: TimelineModel.Tab.ask) {
-                    AskScreen(model: model)
-                }
-                Tab("Add", systemImage: "plus.viewfinder", value: TimelineModel.Tab.add) {
-                    AddScreen(model: model)
-                }
-                Tab("Privacy", systemImage: "hand.raised", value: TimelineModel.Tab.privacy) {
-                    PrivacyScreen(model: model)
+            } else {
+                TabView(selection: $model.tab) {
+                    ForEach(TimelineModel.Tab.allCases) { tab in
+                        Tab(tab.title, systemImage: tab.symbol, value: tab) { pane(tab) }
+                    }
                 }
             }
+        }
+        .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width = $0 }
+    }
+
+    @ViewBuilder private func pane(_ tab: TimelineModel.Tab) -> some View {
+        switch tab {
+        case .trail: TimelineScreen(model: model)
+        case .ask: AskScreen(model: model)
+        case .add: AddScreen(model: model)
+        case .privacy: PrivacyScreen(model: model)
+        }
+    }
+}
+
+/// The wide-layout tab rail: icon above a short label, 62 points wide.
+private struct TabRail: View {
+    @Binding var tab: TimelineModel.Tab
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(TimelineModel.Tab.allCases) { item in
+                Button { tab = item } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: item.symbol).font(.title3)
+                        Text(item.title).font(.caption2)
+                    }
+                    .frame(width: 62, height: 56)
+                    .foregroundStyle(item == tab ? Color.accentColor : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(item == tab ? .isSelected : [])
+            }
+            Spacer()
+        }
+        .padding(.top, 12)
+        .frame(width: 62)
+    }
+}
+
+private extension TimelineModel.Tab {
+    var title: String {
+        switch self {
+        case .trail: "Timeline"
+        case .ask: "Ask"
+        case .add: "Add"
+        case .privacy: "Privacy"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .trail: "clock.arrow.circlepath"
+        case .ask: "bubble.left.and.text.bubble.right"
+        case .add: "plus.viewfinder"
+        case .privacy: "hand.raised"
         }
     }
 }
