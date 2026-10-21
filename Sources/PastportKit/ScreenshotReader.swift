@@ -183,7 +183,7 @@ enum ScreenshotScrubber {
 }
 
 enum ScreenshotKindClassifier {
-    private static let bankingMarkers = [
+    static let bankingMarkers = [
         "bank", "account balance", "available balance", "transaction", "upi",
         "ifsc", "debit", "credit", "statement", "beneficiary", "amount paid"
     ]
@@ -198,9 +198,11 @@ enum ScreenshotKindClassifier {
 
     /// Banking wins when a screenshot is both a chat and a banking screen, as in a
     /// family banking conversation. The caller therefore gets the stricter label.
+    /// Precedence: banking, chat, booking, receipt. A dated ticket whose only banking marker
+    /// is "amount paid" is not banking, so it can become a booking.
     static func classify(_ lines: [String]) -> ScreenshotKind {
         let text = lines.joined(separator: " ").lowercased()
-        if bankingMarkers.contains(where: text.contains) { return .banking }
+        if bankingMarkers.contains(where: text.contains), !BookingFromScreenshot.outranksBanking(lines) { return .banking }
         if chatMarkers.contains(where: text.contains) { return .chat }
         if receiptMarkers.contains(where: text.contains) { return .receipt }
         return .unknown
