@@ -32,26 +32,29 @@ iPhone tabs today are Home and Ask only (`TimelineModel.Tab`, `Sources/PastportK
 ## Real today vs Planned
 
 Real today:
-- Photo activity (counts, screenshots counted not inspected): `Sources/PastportKit/PhotoLibraryProvider.swift`, `PhotoEvents.swift`.
+- Photo activity: ordinary photos are checked on the device for scene labels (image data is loaded locally and classified by Vision, at most five labels per photo; iCloud-only photos are counted without labels and never downloaded); screenshots are counted by metadata only and their pixels are not read. Nothing leaves the device. Reads oldest first and stops at 500 photos today (2.0 changes this to newest first with a disclosure). `Sources/PastportKit/PhotoLibraryProvider.swift:82-146`, `PhotoEvents.swift`.
 - Screenshots you add, text read on device and sensitive strings replaced: `Sources/PastportKit/ScreenshotReader.swift`; picker UI `ExploreViews.swift:84,105`.
 - Timeline assistant with three read-only tools: `Sources/PastportKit/TimelineAssistant.swift`.
 - Safari history, threads, bookings, trackers, map links (Mac): `Sources/PastportMac/SafariHistory.swift`, `PastportKit/Bookings.swift`, `Trackers.swift`, `Movements.swift`.
 - Lock and clear; iOS clears on `.background` (`PastportApp.swift:25-28`); session gate `PastportKit/SessionLock.swift`.
-- Connected tools with per-request approval: `PastportKit/ConnectedAssistant.swift`.
+- Connected tools with per-request approval, all off by default, at most three at once, no write tools, a visible receipt per call: Contacts, Calendar, Reminders, Location, Music, Weather, Web, Web metadata and Health (`ConnectedAssistant.swift:581-612`). Health is reachable today on iPhone through Ask, Answer from, Connected tools, Health (read-only: steps, heart rate, workouts, sleep, active energy, distance).
 
 Planned (not implemented; source: `docs/specs/2026-10-21-pastport-2.0-iphone.md` and the prototype https://claude.ai/artifact/JDQDineuNfWjuBsHv1pZUd):
 - Unlock-first Timeline with 7/30/90/365-day windows and four trails (Overview, Travel, Photos, Privacy). `TimelineTrail`: not found.
 - Evidence cards with "How do we know this?"; booking cards from screenshots (`BookingFromScreenshot`: not found).
 - Four iPhone tabs (Timeline, Ask, Add, Privacy) and a two-pane Duo layout with a trailing tab rail (`PaneLayout`: not found).
-- Optional, off-by-default Health daily totals. The HealthKit entitlement is already declared (`PastportiOS.entitlements`) though no visible iOS Health feature exists; the spec says to remove it if Health is dropped.
+- Timeline Health daily totals are NOT in 2.0 by default (spec A1, a conditional slice). Health stays a Connected tool, named in the App Store and review notes. The HealthKit entitlement and usage string stay; if the owner drops Health entirely, the iOS picker entry, entitlement and usage string are removed together in one commit.
+- No place names in 2.0 (spec A2): the Travel trail shows photo-event dates, counts and scene labels; reverse geocoding would send coordinates to Apple.
+- Risk tier per Connected tool (on-device read, or sends data off the iPhone: Weather, Web, Web metadata, and partly Music and Location), shown as a label in the picker and approval sheet.
+- Unlock is new behaviour on iOS: `isLocked`, `unlock()` (authenticate, request Photos, read), relock on window change. The iPhone window list drops "All".
 - Per-trail `DynamicProfile` and typed `evidenceKinds` on answers.
 - The prototype's Face ID error banner, redaction bars and Privacy approval card are mock-ups; "Real" and "New" tags in the prototype mark which is which.
 
 ## Boundaries
 
-- Read-only. Safari history is copied to a temporary location and queried read-only; Photos never download from iCloud (spec section 4).
+- Read-only. Safari history is copied to a temporary location and queried read-only; Photos never download from iCloud (spec section 4). Photos access is requested as `.readWrite` and `.limited` is accepted; the app never writes to the library.
 - Approvals: Face ID or passcode before a read; Photos permission at first read; every Connected-tools call shows its arguments and destination and waits (`README.md`).
-- Leaves the device: nothing from Safari history or the timeline. Connected tools (Web, Weather) may contact the services shown in each approval and receive no timeline data. The optional Foundation Lab export is an explicit JSON of counts only.
+- Leaves the device: nothing from Safari history or the timeline. Connected tools in the off-device tier (Weather, Web, Web metadata; Music search and Location map lookups) may contact the services shown in each approval and receive no timeline data. The optional Foundation Lab export is an explicit JSON of counts only.
 - No account, server or analytics. No money handled.
 - App Review 2.5.19: demo mode and screenshot launch arguments (`--demo`, `--ask`, `--ask-empty`, `--search`) sit inside `#if DEBUG` (`PastportApp.swift:14-22`, `Home.swift:74`). Run `hidden-feature-gate` before any upload.
 
