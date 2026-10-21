@@ -73,6 +73,26 @@ struct TimelineTrailTests {
         #expect(overview.contains { $0.id == "privacy-summary" })
     }
 
+    // MARK: Booking cards (slice 10)
+
+    @Test func aBookingScreenshotMakesACardWithKindAndDate() throws {
+        let ticket = shot(["Island Ferries", "E-ticket", "Departs 20 Jun 2026"])
+        let card = try #require(EvidenceCards.bookingCard(ticket))
+        #expect(card.source == .screenshot)
+        #expect(card.details.first == "Ticket")
+        #expect(card.sentence.hasPrefix("Ticket dated "))
+        #expect(card.sentence.hasSuffix(": Island Ferries."))
+        #expect(EvidenceCards.bookingCard(shot(["Gate 4"])) == nil)
+    }
+
+    @Test func travelAndOverviewIncludeTheBookingCard() {
+        let ticket = shot(["Island Ferries", "E-ticket", "Departs 20 Jun 2026"])
+        let travel = cards(.travel, [ticket])
+        #expect(travel.count == 2)
+        #expect(travel.first?.id == "booking-\(ticket.id.uuidString)", "20 Jun is newer than the 14 to 16 Jun burst")
+        #expect(cards(.overview, [ticket]).contains { $0.id.hasPrefix("booking-") })
+    }
+
     // MARK: Slice 7
 
     @Test func everyTrailHasAskChips() {

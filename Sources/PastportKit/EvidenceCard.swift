@@ -30,7 +30,8 @@ public enum EvidenceCards {
             return newestFirst(photoEvents.map { photoCard($0, window: window) })
         case .travel:
             let multiDay = photoEvents.filter { dayCount($0) > 1 }.map { photoCard($0, window: window) }
-            return newestFirst(multiDay)
+            let bookings = screenshots.compactMap { bookingCard($0) }
+            return newestFirst(multiDay + bookings)
         case .privacy:
             guard !screenshots.isEmpty else { return [] }
             return [privacySummary(screenshots)] + newestFirst(screenshots.map(screenshotCard))
