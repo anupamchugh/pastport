@@ -65,7 +65,7 @@ struct TimelineScreen: View {
                 } else {
                     VStack(spacing: 0) {
                         SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
-                        HomeView(model: model)
+                        TrailTimelineView(model: model)
                     }
                 }
             }

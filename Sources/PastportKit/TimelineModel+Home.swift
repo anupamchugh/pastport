@@ -40,6 +40,9 @@ extension TimelineModel {
             if !nameableThreads.isEmpty { starters.append("What was I researching?") }
             if !movements.isEmpty { starters.append("Which places appear in my history?") }
             if !travel.isEmpty { starters.append("How many booking pages did I visit?") }
+        } else if !canReadHistory {
+            // iPhone and iPad: the open trail's chips, once anything has been read.
+            if hasContent { starters = trail.askChips }
         } else {
             if !photoEvents.isEmpty { starters.append("What does my photo activity show?") }
             if !screenshots.isEmpty { starters.append("What does my screenshot say?") }
