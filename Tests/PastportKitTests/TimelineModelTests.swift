@@ -179,20 +179,29 @@ struct TimelineModelTests {
         #expect(model.status == "Demo data · no history read")
     }
 
-    @Test func openingTheTimelineFromAnIntentLandsOnTheLockedScreenAndReturnsNothing() {
-        let model = TimelineModel(history: DemoHistorySource(), screenshotReader: ScreenshotReader { _ in ["Receipt"] },
-                                  authenticator: AlwaysUnlocked(),
-                                  timelineAnswerer: ScriptedAnswerer(updates: []),
-                                  appleIntelligenceReady: { false })
-        model.demoMode = true
+    @Test func openingTheTimelineFromAnIntentOnAColdLaunchStaysLockedAndReadsNothing() async throws {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log), authenticator: LoggedAuth(log: log),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.openTimeline() // The intent runs before the window appears.
+        model.start()        // The window then appears.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.isLocked && model.tab == .trail)
+        #expect(model.photoEvents.isEmpty && model.screenshots.isEmpty && model.turns.isEmpty)
+        #expect(!log.value.contains("authenticate") && !log.value.contains("read") && !log.value.contains("access"))
+    }
+
+    @Test func openingTheTimelineFromAnIntentClearsAnUnlockedSession() async throws {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log), authenticator: LoggedAuth(log: log),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
         model.start()
         model.readPhotos()
+        try await waitUntil { !model.isLocked && !model.photoEvents.isEmpty }
         model.tab = .ask
-        #expect(!model.isLocked && !model.photoEvents.isEmpty)
-        let result: Void = model.openTimeline() // Void: the intent has nothing to hand back.
-        #expect(result == ())
+        model.openTimeline()
         #expect(model.isLocked && model.tab == .trail)
-        #expect(model.photoEvents.isEmpty && model.movements.isEmpty && model.turns.isEmpty)
+        #expect(model.photoEvents.isEmpty && model.input.isEmpty)
     }
 
     @Test func phoneHasNoHistoryAndOffersTimelineQuestions() {

@@ -53,9 +53,9 @@ device and show what they are based on. Nothing is read until you ask, and every
 ## What's new, Pastport 2.0 for iPhone and iPad (draft)
 Pastport now builds a private timeline on iPhone and iPad from your photo activity and the screenshots you add, in four
 tabs: Timeline, Ask, Add and Privacy. On iPhone Duo and iPad the screen opens into two panes. Open Timeline is a
-Shortcuts action (also by voice or Spotlight: "Open my timeline in Pastport") that opens Pastport on the locked
-screen. Connected tools (Ask, "Answer from") can use Health, Weather, Contacts, Calendar, Reminders, Location and Music
-once you turn a tool on and allow each request.
+Shortcuts action (also by Siri phrase: "Open my timeline in Pastport") that opens Pastport on the locked
+screen. Connected tools (Ask, "Answer from") can use Health, Weather, Web, Web metadata, Contacts, Calendar, Reminders,
+Location and Music once you turn a tool on and allow each request.
 
 ## Notes for Review (2.0, draft)
 - **Open Timeline** (`OpenTimelineIntent`, the app's only App Intent) is listed in Shortcuts and works by Siri phrase
@@ -64,10 +64,12 @@ once you turn a tool on and allow each request.
 - **Health** is under Ask → Answer from → Connected tools → Health. It is read-only (`toShare: []`) and reads: steps,
   heart rate, workouts, sleep, active energy and distance. A tool is off until the person turns it on, and every
   request shows its exact arguments and needs Allow once. Connected-tools state is cleared on lock and when
-  the app leaves the foreground. Nothing is sent off the device by Health; Weather and web tools are labelled
-  "Sends data off this iPhone".
+  the app leaves the foreground. Health, Contacts, Calendar and Reminders are on-device. Weather, Web and Web
+  metadata are labelled "Sends data off this iPhone"; Music and Location are labelled "Some requests leave this iPhone"
+  (catalog search and place search go to Apple). Health's data types and read-only access are as specified for the
+  `FoundationModelsKit` Health tool (spec section 4); confirm against that package before submitting.
 - Place names and photos stay on the device; photo coordinates are not read.
-- No demo or test switches ship in the Release build (hidden-feature gate: binary 0 hits).
+- No demo or test switches ship in the Release build (hidden-feature gate, 2026-10-22, on the Release iOS Simulator build of this branch: binary 0 hits; re-run on the final archive).
 
 ## Your upload steps
 1. Enable HealthKit on the `com.anupamchugh.Pastport` App ID.

@@ -4,7 +4,7 @@ Branch `claude/pastport-duo-1022` (worktree `.worktrees/pastport-duo-1022`), bas
 Local commits only; nothing pushed, merged or uploaded.
 
 ## Starting state
-- 2.0 spec slices done on `claude/pastport-2.0`: 1 to 16 (docs, photo read, honest copy, unlock, locked screen, trails, evidence cards, Add, Privacy, tool labels, dynamic profile, Duo layout). Not done: 17 (OpenTimelineIntent), 18 (Health totals, off by default per A1), 19 (gate + report).
+- 2.0 spec slices done on `claude/pastport-2.0`: 1 to 16 (docs, photo read, honest copy, unlock, locked screen, trails, evidence cards, Add, Privacy, tool labels, dynamic profile, Duo layout). Not done at the start: 17 (OpenTimelineIntent), 18 (Health totals, off by default per A1), 19 (gate + report). Update: 17 and 19 were then done on this branch; 18 skipped (spec default A1).
 - `.worktrees/pastport-2.0` has uncommitted work I did not touch: modified `ScreenshotReader.swift` and `main.swift`, untracked `Sources/PastportEval/TimelineEval.swift`.
 
 ## What changed for Duo
@@ -42,5 +42,10 @@ Folded iPhone Duo (outer display, 466 x 678 pt), light and dark, Timeline, Ask, 
 - Shared toolbar in the Timeline + Ask pair: Lock and Clear and the Answer-from menu sit together in one bar with implicit order, and only "Timeline" is titled. Consider a header per pane, and tab labels "Timeline & Ask" / "Add & Privacy".
 - Does folding or unfolding send the scene through `.background` (which calls `lockAndClear`)? Test on the Duo; if so, decide a grace period.
 - `Home.swift:199` fixed `width: 30` next to a `.title3` icon could clip at accessibility sizes (not changed here).
-- Slices 17 (OpenTimelineIntent) and 18 (Health totals) are untouched. HealthKit not added.
+- Slice 17 done (Open Timeline intent); slice 18 (Health totals) skipped per spec default A1. HealthKit not added.
 - Spec text (section 6) still names `PaneLayout.panes(for:width:)` and a trailing tab rail; update it.
+
+## Slices 17 and 19 (added 2026-10-22)
+- 17: `OpenTimelineIntent` (`supportedModes .foreground`), `TimelineModel.openTimeline()`, `SharedTimeline.model`. Tests (TimelineModelTests): cold launch stays locked and reads/authenticates nothing; an unlocked session is cleared and returns to Timeline. Caller: Shortcuts action and Siri phrase, named in RELEASE-READY.md.
+- 19: `swift test` 106 XCTest, 0 failures; Swift Testing 124 Kit, 7 Mac, 2 Eval passed. Release build for iOS Simulator succeeded; build settings MACCATALYST/MAC_DESIGNED/XR_DESIGNED = NO, TARGETED_DEVICE_FAMILY = 1,2; `rg UIScreen|userInterfaceIdiom|interfaceOrientation Sources` empty. Gate: binary 0 hits; source 7 hits, all the visible Unlock feature.
+- Reviewer on the slice-17 diff: APPROVE WITH FIXES. Fixed: tautological test replaced by cold-launch and unlocked-session tests; gate claim dated and scoped; all nine tools and both off-device labels named. Open: Health package details not re-read (notes say to confirm); gate to be re-run on the final archive; the intent clears an already-unlocked open session (by design).
