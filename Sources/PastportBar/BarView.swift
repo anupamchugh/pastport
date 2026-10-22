@@ -18,7 +18,7 @@ struct BarView: View {
             SessionStatus(model: m).padding(.horizontal, 16).padding(.top, 8)
             Group {
                 switch m.tab {
-                case .trail:
+                case .trail, .add, .privacy:
                     HomeView(model: m)
                 case .ask:
                     if m.assistantSource == .connected {
@@ -44,7 +44,7 @@ struct BarView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Picker("Section", selection: $m.tab) {
-                ForEach(TimelineModel.Tab.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(TimelineModel.Tab.macTabs) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
             Spacer()

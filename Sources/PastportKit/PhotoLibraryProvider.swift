@@ -8,12 +8,36 @@ import Vision
 /// The only Photos boundary consumed by Pastport's deterministic photo code.
 public protocol PhotoLibraryReading: Sendable {
     func records(since: Date, limit: Int) async throws -> [PhotoRecord]
+    /// Like `records`, plus how many photos the window holds and whether access is limited.
+    func read(since: Date, limit: Int) async throws -> PhotoRead
     /// Shows the system Photos prompt once, only when the person chose to read photos.
     func requestAccess() async
 }
 
 public extension PhotoLibraryReading {
     func requestAccess() async {}
+
+    func read(since: Date, limit: Int) async throws -> PhotoRead {
+        let records = try await records(since: since, limit: limit)
+        return PhotoRead(records: records, totalInWindow: records.count, isLimitedAccess: false)
+    }
+}
+
+/// What one Photos read returned: the records kept, how many photos the window holds in
+/// total, and whether the person shared only part of their library.
+public struct PhotoRead: Sendable {
+    public let records: [PhotoRecord]
+    public let totalInWindow: Int
+    public let isLimitedAccess: Bool
+
+    public init(records: [PhotoRecord], totalInWindow: Int, isLimitedAccess: Bool) {
+        self.records = records
+        self.totalInWindow = totalInWindow
+        self.isLimitedAccess = isLimitedAccess
+    }
+
+    /// True when the window held more photos than were read.
+    public var isTruncated: Bool { totalInWindow > records.count }
 }
 
 public enum PhotoLibraryError: Error, Equatable, Sendable {
@@ -27,22 +51,31 @@ public enum PhotoLibraryError: Error, Equatable, Sendable {
 /// downloads an iCloud-only image. Screenshot assets contribute counts only;
 /// their pixels are never passed to Vision classification.
 public struct PhotoLibraryProvider: PhotoLibraryReading {
-    private let read: @Sendable (Date, Int) async throws -> [PhotoRecord]
+    private let source: @Sendable (Date, Int) async throws -> PhotoRead
 
     public init() {
-        self.read = { since, limit in
+        self.source = { since, limit in
             try await Self.readPhotos(since: since, limit: limit)
         }
     }
 
+    /// `metadata` returns every asset in the window; the provider keeps the newest `limit`.
     init(
         metadata: @escaping @Sendable (Date, Int) async throws -> [PhotoAssetMetadata],
-        classify: @escaping @Sendable (Data) async throws -> [PhotoLabel]
+        classify: @escaping @Sendable (Data) async throws -> [PhotoLabel],
+        isLimitedAccess: Bool = false
     ) {
-        self.read = { since, limit in
+        self.source = { since, limit in
             let assets = try await metadata(since, limit)
-            return try await Self.makeRecords(assets, classify: classify)
+            let kept = Self.newest(assets, limit: limit)
+            let records = try await Self.makeRecords(kept, classify: classify)
+            return PhotoRead(records: records, totalInWindow: assets.count, isLimitedAccess: isLimitedAccess)
         }
+    }
+
+    /// The newest `limit` assets, oldest first. Pure, so the cap rule is testable without Photos.
+    static func newest(_ assets: [PhotoAssetMetadata], limit: Int) -> [PhotoAssetMetadata] {
+        assets.sorted { $0.time > $1.time }.prefix(limit).sorted { $0.time < $1.time }
     }
 
     public func requestAccess() async {
@@ -54,20 +87,25 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
     }
 
     public func records(since: Date, limit: Int = 500) async throws -> [PhotoRecord] {
+        try await read(since: since, limit: limit).records
+    }
+
+    public func read(since: Date, limit: Int = 500) async throws -> PhotoRead {
         guard (1...500).contains(limit) else { throw PhotoLibraryError.invalidLimit }
         try Task.checkCancellation()
-        let records = try await read(since, limit)
+        let result = try await source(since, limit)
         // A source may finish successfully just as its caller is cancelled. Do not
         // publish that stale result across the public boundary.
         try Task.checkCancellation()
-        guard !records.isEmpty else { throw PhotoLibraryError.empty }
-        return records
+        guard !result.records.isEmpty else { throw PhotoLibraryError.empty }
+        return result
     }
 
     #if canImport(Photos)
-    private static func readPhotos(since: Date, limit: Int) async throws -> [PhotoRecord] {
+    private static func readPhotos(since: Date, limit: Int) async throws -> PhotoRead {
         try Task.checkCancellation()
-        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        let access = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        switch access {
         case .authorized, .limited:
             break
         case .denied, .restricted:
@@ -79,15 +117,16 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
         }
 
         let options = PHFetchOptions()
-        options.fetchLimit = limit
-        options.sortDescriptors = [NSSortDescriptor(key: #keyPath(PHAsset.creationDate), ascending: true)]
+        // Newest first with no fetch limit, so a busy window keeps its latest photos and
+        // `assets.count` is the true total.
+        options.sortDescriptors = [NSSortDescriptor(key: #keyPath(PHAsset.creationDate), ascending: false)]
         options.predicate = NSPredicate(
             format: "%K >= %@", #keyPath(PHAsset.creationDate), since as NSDate
         )
         let assets = PHAsset.fetchAssets(with: .image, options: options)
         var records: [PhotoRecord] = []
         records.reserveCapacity(min(assets.count, limit))
-        for index in 0..<assets.count {
+        for index in 0..<min(assets.count, limit) {
             try Task.checkCancellation()
             let asset = assets.object(at: index)
             guard let time = asset.creationDate else { continue }
@@ -112,7 +151,7 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
             records.append(PhotoRecord(time: time, isScreenshot: screenshot, labels: labels))
         }
         guard !records.isEmpty else { throw PhotoLibraryError.empty }
-        return records
+        return PhotoRead(records: records, totalInWindow: assets.count, isLimitedAccess: access == .limited)
     }
 
     private static func classifyImage(_ data: Data) async throws -> [PhotoLabel] {
@@ -214,7 +253,7 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
         }
     }
     #else
-    private static func readPhotos(since: Date, limit: Int) async throws -> [PhotoRecord] {
+    private static func readPhotos(since: Date, limit: Int) async throws -> PhotoRead {
         throw PhotoLibraryError.unavailable
     }
     #endif

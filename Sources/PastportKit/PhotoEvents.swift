@@ -38,6 +38,19 @@ public enum PhotoEvents {
         }
     }
 
+    /// The line shown after a photo read: what the read covered, the newest-500 cut when the
+    /// window held more, and the limited-access note. Counts come from data, never a model.
+    public static func statusLine(for read: PhotoRead) -> String {
+        var lines = ["Photos are checked on this device for scene labels; screenshots are counted only. Up to 500 images."]
+        if read.isTruncated {
+            lines.append("Showing the newest \(read.records.count) of \(read.totalInWindow) photos in this window")
+        }
+        if read.isLimitedAccess {
+            lines.append("Counting only the photos you shared with Pastport")
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Groups records into events: a new event starts when the quiet stretch since the
     /// previous image exceeds `gap` (default 36h — survives a sleep, splits separate trips).
     public static func cluster(_ records: [PhotoRecord],

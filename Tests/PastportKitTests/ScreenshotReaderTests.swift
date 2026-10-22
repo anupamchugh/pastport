@@ -348,4 +348,31 @@ final class ScreenshotReaderTests: XCTestCase {
         try png.write(to: url, options: .atomic)
         return url
     }
+
+    // MARK: Per-kind redaction counts (slice 8)
+
+    func testRedactionsAreCountedByKind() {
+        let evidence = ScreenshotScrubber.scrub([
+            "From alice@example.test to bob@example.test",
+            "Your OTP is 482913",
+            "Card 4111 1111 1111 1111",
+        ])
+        XCTAssertEqual(evidence.redactions, RedactionCounts(email: 2, otp: 1, card: 1))
+        XCTAssertEqual(evidence.redactionCount, 4)
+    }
+
+    func testCleanTextHasNoRedactions() {
+        let evidence = ScreenshotScrubber.scrub(["Ferry to the island", "Gate 4"])
+        XCTAssertEqual(evidence.redactions, .zero)
+        XCTAssertEqual(evidence.redactionCount, 0)
+        XCTAssertEqual(ScreenshotScrubber.scrub([]).redactions, .zero)
+    }
+
+    func testRedactionCountsNeverCarryTheHiddenText() {
+        let evidence = ScreenshotScrubber.scrub(["alice@example.test", "OTP 482913", "4111 1111 1111 1111"])
+        let described = String(describing: evidence.redactions) + String(reflecting: evidence.redactions)
+        for secret in ["alice", "example.test", "482913", "4111"] {
+            XCTAssertFalse(described.contains(secret), secret)
+        }
+    }
 }

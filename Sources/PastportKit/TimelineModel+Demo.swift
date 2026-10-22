@@ -20,6 +20,7 @@ extension TimelineModel {
                 "Sent to guest@example.com", "Card 4111 1111 1111 1111",
             ]))]
             status = "Demo data · no library read"
+            isLocked = false
             return
         }
         let v = DemoData.visits

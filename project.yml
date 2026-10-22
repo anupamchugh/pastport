@@ -43,7 +43,7 @@ targets:
         # (CODE_SIGN_STYLE: Automatic + DEVELOPMENT_TEAM) only for distribution.
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pastport reads local photo activity only when you choose. Images stay on your Mac; screenshots contribute counts only."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pastport reads local photo activity only when you choose. Photos are checked on this Mac for scene labels, such as beach or food. Nothing leaves the Mac and no photo is kept. Screenshots are counted only. Photos stored only in iCloud are skipped."
         INFOPLIST_KEY_NSContactsUsageDescription: "Search or read contacts only after you enable Contacts and approve a tool request."
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Read calendar events only after you enable Calendar and approve a tool request."
         INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "Read reminders only after you enable Reminders and approve a tool request."
@@ -88,7 +88,7 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: "NO"
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Pastport asks for Face ID before it reads your photo activity or shows a private item."
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pastport reads local photo activity only when you choose. Images stay on this device; screenshots contribute counts only."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Pastport reads local photo activity only when you choose. Photos are checked on this iPhone for scene labels, such as beach or food. Nothing leaves the device and no photo is kept. Screenshots are counted only. Photos stored only in iCloud are skipped."
         INFOPLIST_KEY_NSContactsUsageDescription: "Search or read contacts only after you enable Contacts and approve a tool request."
         INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Read calendar events only after you enable Calendar and approve a tool request."
         INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "Read reminders only after you enable Reminders and approve a tool request."

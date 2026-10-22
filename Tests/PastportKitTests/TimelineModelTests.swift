@@ -74,6 +74,32 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
     }
 }
 
+/// Records the order of authenticate, access request and read.
+private final class CallLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func add(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+    var value: [String] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+private struct LoggedAuth: Authenticating {
+    let log: CallLog
+    var result: UnlockResult = .unlocked
+    func unlock(reason: String, graceMinutes: Int) async -> UnlockResult { log.add("authenticate"); return result }
+    func relock() {}
+}
+
+private struct LoggedPhotos: PhotoLibraryReading {
+    let log: CallLog
+    var failure: PhotoLibraryError?
+    func records(since: Date, limit: Int) async throws -> [PhotoRecord] {
+        log.add("read")
+        if let failure { throw failure }
+        return [PhotoRecord(time: Date(), isScreenshot: false, labels: [])]
+    }
+    func requestAccess() async { log.add("access") }
+}
+
 @MainActor
 @Suite("Timeline model", .timeLimit(.minutes(1)))
 struct TimelineModelTests {
@@ -153,6 +179,31 @@ struct TimelineModelTests {
         #expect(model.status == "Demo data · no history read")
     }
 
+    @Test func openingTheTimelineFromAnIntentOnAColdLaunchStaysLockedAndReadsNothing() async throws {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log), authenticator: LoggedAuth(log: log),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.openTimeline() // The intent runs before the window appears.
+        model.start()        // The window then appears.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.isLocked && model.tab == .trail)
+        #expect(model.photoEvents.isEmpty && model.screenshots.isEmpty && model.turns.isEmpty)
+        #expect(!log.value.contains("authenticate") && !log.value.contains("read") && !log.value.contains("access"))
+    }
+
+    @Test func openingTheTimelineFromAnIntentClearsAnUnlockedSession() async throws {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log), authenticator: LoggedAuth(log: log),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.start()
+        model.readPhotos()
+        try await waitUntil { !model.isLocked && !model.photoEvents.isEmpty }
+        model.tab = .ask
+        model.openTimeline()
+        #expect(model.isLocked && model.tab == .trail)
+        #expect(model.photoEvents.isEmpty && model.input.isEmpty)
+    }
+
     @Test func phoneHasNoHistoryAndOffersTimelineQuestions() {
         let model = phoneModel(ScriptedAnswerer(updates: []))
         model.start()
@@ -228,6 +279,106 @@ struct TimelineModelTests {
         await gate.open()
         try await waitUntil { !model.busy }
         #expect(model.photoEvents.count == 1)
+    }
+
+    @Test func photoStatusSaysScenesAreCheckedOnThePhoneAndNeverClaimsPhotosAreUnopened() async throws {
+        let gate = Gate()
+        await gate.open()
+        let model = TimelineModel(history: nil, photos: GatedPhotos(gate: gate), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        model.readPhotos()
+        try await waitUntil { !model.busy && !model.photoEvents.isEmpty }
+        #expect(model.photoStatus.contains("scene labels"))
+        #expect(!model.photoStatus.lowercased().contains("never"))
+        #expect(!model.photoStatus.lowercased().contains("not inspected"))
+    }
+
+    // MARK: Unlock (slice 4)
+
+    private func lockedModel(auth: UnlockResult = .unlocked, failure: PhotoLibraryError? = nil,
+                             reader: ScreenshotReader = ScreenshotReader()) -> (TimelineModel, CallLog) {
+        let log = CallLog()
+        let model = TimelineModel(history: nil, photos: LoggedPhotos(log: log, failure: failure), screenshotReader: reader,
+                                  authenticator: LoggedAuth(log: log, result: auth),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        return (model, log)
+    }
+
+    @Test func launchIsLocked() {
+        let (model, log) = lockedModel()
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
+        #expect(log.value.isEmpty, "nothing is authenticated or read before the person unlocks")
+    }
+
+    @Test func unlockAuthenticatesThenRequestsAccessThenReads() async throws {
+        let (model, log) = lockedModel()
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        #expect(log.value == ["authenticate", "access", "read"])
+        #expect(model.photoEvents.count == 1)
+    }
+
+    @Test func cancelledAuthenticationStaysLockedWithNoEvidence() async throws {
+        let (model, log) = lockedModel(auth: .cancelled)
+        model.unlock()
+        try await waitUntil { !model.busy && log.value.contains("authenticate") }
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
+        #expect(log.value == ["authenticate"], "no Photos access is requested after a failed unlock")
+    }
+
+    @Test func deniedPhotoReadStillUnlocksWithTheDeniedStatus() async throws {
+        let (model, _) = lockedModel(failure: .denied)
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        #expect(model.photoEvents.isEmpty)
+        #expect(model.photoStatus == PhotoEvents.statusLine(for: .denied))
+    }
+
+    @Test func screenshotAddedWhileLockedIsKeptUntilLockAndClear() async throws {
+        let (model, _) = lockedModel(reader: ScreenshotReader { _ in ["Ferry ticket"] })
+        model.addScreenshot(data: Data([0x1]), name: "Ticket")
+        try await waitUntil { model.screenshots.count == 1 }
+        #expect(model.isLocked, "adding a screenshot does not unlock the timeline")
+        model.lockAndClear()
+        #expect(model.screenshots.isEmpty)
+        #expect(model.isLocked)
+    }
+
+    @Test func changingTheWindowRelocks() async throws {
+        let (model, _) = lockedModel()
+        model.unlock()
+        try await waitUntil { !model.isLocked }
+        model.days = 7
+        #expect(model.isLocked)
+        #expect(model.photoEvents.isEmpty)
+    }
+
+    // MARK: Locked screen (slice 5)
+
+    @Test func iPhoneWindowsAreTheFourChipsWithoutAll() {
+        #expect(TimelineModel.iPhoneWindows == [7, 30, 90, 365])
+        let (model, _) = lockedModel()
+        #expect(model.days == 90, "the Mac default is unchanged")
+        let phone = TimelineModel(history: nil, photos: NoPhotos(), authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false }, days: 30)
+        #expect(phone.days == 30)
+        #expect(phone.isLocked)
+    }
+
+    // MARK: Add tab (slice 11)
+
+    @Test func iPhoneTabsAreTimelineAskAddPrivacy() {
+        #expect(TimelineModel.Tab.allCases == [.trail, .ask, .add, .privacy])
+        #expect(TimelineModel.Tab.macTabs == [.trail, .ask])
+    }
+
+    @Test func aScreenshotWithNoTextSaysNoTextFound() async throws {
+        let (model, _) = lockedModel(reader: ScreenshotReader { _ in [] })
+        model.addScreenshot(data: Data([0x1]), name: "Blank")
+        try await waitUntil { model.screenshotStatus == TimelineModel.noTextFound }
+        #expect(model.screenshotStatus == "No text found. Try a clearer screenshot.")
     }
 
     @Test func screenshotFinishingAfterALockIsDropped() async throws {

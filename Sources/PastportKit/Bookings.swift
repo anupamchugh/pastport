@@ -14,7 +14,7 @@ public struct Booking: Identifiable, Finding {
     public let title: String
     public let url: String        // query-stripped; the receipt is the path, not the params
 
-    public enum Kind: String {
+    public enum Kind: String, Sendable {
         case confirmation   // "your booking is confirmed"
         case itinerary      // a trip/booking you can go back and look at
         case checkout       // money about to move

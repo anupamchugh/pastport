@@ -84,8 +84,48 @@ public enum ConnectedToolApprovalError: Error, LocalizedError, Sendable, Equatab
     }
 }
 
+/// Where a connected tool's data goes (spec table 7a). There are no write tools.
+public enum ConnectedToolTier: String, Sendable {
+    /// Reads data that stays on the device.
+    case onDevice = "A"
+    /// Some actions stay on the device and some send a request off it.
+    case mixed = "A/B"
+    /// Sends something off the device.
+    case offDevice = "B"
+
+    /// The label shown in the picker and the Allow once sheet; nil for on-device tools.
+    public var label: String? {
+        switch self {
+        case .onDevice: nil
+        case .mixed: "Some requests leave this iPhone"
+        case .offDevice: "Sends data off this iPhone"
+        }
+    }
+}
+
 /// Policy shared by the UI, adapters, and tests. It intentionally has no I/O.
 public enum ConnectedAssistantPolicy {
+    /// Music: now playing stays local, a catalog search goes to Apple Music (MusicCatalogSearchRequest).
+    /// Location: the current position is read locally, geocoding and place search go to MapKit.
+    public static func tier(for tool: FoundationLabBuiltInTool) -> ConnectedToolTier {
+        switch tool {
+        case .contacts, .calendar, .reminders, .health: .onDevice
+        case .music, .location: .mixed
+        case .weather, .web, .webMetadata: .offDevice
+        @unknown default: .offDevice
+        }
+    }
+
+    /// The tier for an approval request, from the destination `makeTools` gave it.
+    public static func tier(forDestination destination: String) -> ConnectedToolTier? {
+        let byDestination: [String: FoundationLabBuiltInTool] = [
+            "Weather": .weather, "Web": .web, "Web metadata": .webMetadata, "Location": .location,
+            "Health": .health, "Apple Music": .music, "Calendar": .calendar, "Reminders": .reminders,
+            "Contacts": .contacts,
+        ]
+        return byDestination[destination].map(tier(for:))
+    }
+
     public static let maximumSelectedTools = 3
 
     public static func canSelect(_ tool: FoundationLabBuiltInTool, alongside selected: [FoundationLabBuiltInTool]) -> Bool {

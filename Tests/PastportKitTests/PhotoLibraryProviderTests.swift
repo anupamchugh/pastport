@@ -129,4 +129,54 @@ final class PhotoLibraryProviderTests: XCTestCase {
         }
     }
 
+
+    // MARK: Newest first, cap disclosure, limited access (slice 2)
+
+    private func assets(count: Int) -> [PhotoAssetMetadata] {
+        (0..<count).map {
+            PhotoAssetMetadata(time: Date(timeIntervalSince1970: Double($0)), isScreenshot: false, imageData: nil)
+        }
+    }
+
+    func testNewestKeepsTheNewestRecordsAndDropsTheOldest() {
+        let kept = PhotoLibraryProvider.newest(assets(count: 501), limit: 500)
+        XCTAssertEqual(kept.count, 500)
+        XCTAssertEqual(kept.first?.time, Date(timeIntervalSince1970: 1))
+        XCTAssertEqual(kept.last?.time, Date(timeIntervalSince1970: 500))
+        XCTAssertFalse(kept.contains { $0.time == Date(timeIntervalSince1970: 0) })
+    }
+
+    func testReadReportsTotalAndClassifiesOnlyKeptPhotos() async throws {
+        let state = State()
+        let provider = PhotoLibraryProvider(
+            metadata: { _, _ in (0..<501).map {
+                PhotoAssetMetadata(time: Date(timeIntervalSince1970: Double($0)), isScreenshot: false,
+                                   imageData: Data("x".utf8))
+            } },
+            classify: { _ in state.calls += 1; return [] }
+        )
+        let result = try await provider.read(since: .distantPast, limit: 500)
+        XCTAssertEqual(result.records.count, 500)
+        XCTAssertEqual(result.totalInWindow, 501)
+        XCTAssertTrue(result.isTruncated)
+        XCTAssertEqual(state.calls, 500, "the dropped photo's pixels must never be opened")
+    }
+
+    func testReadAtTheCapIsNotTruncated() async throws {
+        let provider = PhotoLibraryProvider(metadata: { _, _ in self.assets(count: 500) }, classify: { _ in [] })
+        let result = try await provider.read(since: .distantPast, limit: 500)
+        XCTAssertEqual(result.totalInWindow, 500)
+        XCTAssertFalse(result.isTruncated)
+    }
+
+    func testReadCarriesTheLimitedAccessFlag() async throws {
+        let limited = PhotoLibraryProvider(metadata: { _, _ in self.assets(count: 1) }, classify: { _ in [] },
+                                           isLimitedAccess: true)
+        let full = PhotoLibraryProvider(metadata: { _, _ in self.assets(count: 1) }, classify: { _ in [] })
+        let limitedRead = try await limited.read(since: .distantPast, limit: 500)
+        let fullRead = try await full.read(since: .distantPast, limit: 500)
+        XCTAssertTrue(limitedRead.isLimitedAccess)
+        XCTAssertFalse(fullRead.isLimitedAccess)
+    }
+
 }

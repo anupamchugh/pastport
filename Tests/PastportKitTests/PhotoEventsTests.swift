@@ -76,4 +76,14 @@ final class PhotoEventsTests: XCTestCase {
                                          gap: 3600)
         XCTAssertEqual(events.count, 2)
     }
+
+    func testStatusLineDisclosesTheCapAndLimitedAccess() {
+        let records = [photo(at: 0)]
+        let capped = PhotoRead(records: (0..<500).map { photo(at: TimeInterval($0)) }, totalInWindow: 501, isLimitedAccess: false)
+        XCTAssertTrue(PhotoEvents.statusLine(for: capped).contains("Showing the newest 500 of 501"))
+        let full = PhotoRead(records: records, totalInWindow: 1, isLimitedAccess: false)
+        XCTAssertFalse(PhotoEvents.statusLine(for: full).contains("Showing the newest"))
+        let limited = PhotoRead(records: records, totalInWindow: 1, isLimitedAccess: true)
+        XCTAssertTrue(PhotoEvents.statusLine(for: limited).contains("Counting only the photos you shared with Pastport"))
+    }
 }
