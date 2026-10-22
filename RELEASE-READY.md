@@ -63,7 +63,7 @@ once you turn a tool on and allow each request.
   Face ID or passcode is still asked before photo activity is read.
 - **Health** is under Ask → Answer from → Connected tools → Health. It is read-only (`toShare: []`) and reads: steps,
   heart rate, workouts, sleep, active energy and distance. A tool is off until the person turns it on, and every
-  request shows its exact arguments and needs Allow once. Health data is never stored and is cleared on lock and when
+  request shows its exact arguments and needs Allow once. Connected-tools state is cleared on lock and when
   the app leaves the foreground. Nothing is sent off the device by Health; Weather and web tools are labelled
   "Sends data off this iPhone".
 - Place names and photos stay on the device; photo coordinates are not read.
