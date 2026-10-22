@@ -30,8 +30,9 @@ struct PastportApp: App {
 }
 
 /// One tab at compact width; at regular width `PaneLayout` pairs Timeline with Ask and Add with
-/// Privacy, with one tab per pair. The selected tab lives in the model, so folding and unfolding
-/// keeps it. The tab bar is the system's (`sidebarAdaptable`), which the system places on the Duo's
+/// Privacy, with one tab per pair. The selected tab, unlock state, evidence and the Ask draft live
+/// in the model, so folding and unfolding keeps them; scroll position and card disclosures are view
+/// state and reset when the size class changes. The tab bar is the system's (`sidebarAdaptable`), which the system places on the Duo's
 /// outer display.
 struct RootView: View {
     @Bindable var model: TimelineModel
