@@ -2,9 +2,14 @@ import PastportKit
 import PastportUI
 import SwiftUI
 
+/// The one model, shared so the Open Timeline intent reaches the same screen the window shows.
+@MainActor enum SharedTimeline {
+    static let model = TimelineModel(history: nil, days: 30)
+}
+
 @main
 struct PastportApp: App {
-    @State private var model = TimelineModel(history: nil, days: 30)
+    @State private var model = SharedTimeline.model
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

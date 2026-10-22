@@ -198,6 +198,13 @@ public final class TimelineModel {
         }
     }
 
+    /// What the "Open Timeline" App Intent does: show the Timeline tab on the locked screen.
+    /// Anything already read is cleared and nothing is returned to the caller.
+    public func openTimeline() {
+        lockAndClear()
+        tab = .trail
+    }
+
     public func lockAndClear() {
         generation = UUID()
         operation?.cancel(); operation = nil; operationID = nil

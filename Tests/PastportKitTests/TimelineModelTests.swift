@@ -179,6 +179,22 @@ struct TimelineModelTests {
         #expect(model.status == "Demo data · no history read")
     }
 
+    @Test func openingTheTimelineFromAnIntentLandsOnTheLockedScreenAndReturnsNothing() {
+        let model = TimelineModel(history: DemoHistorySource(), screenshotReader: ScreenshotReader { _ in ["Receipt"] },
+                                  authenticator: AlwaysUnlocked(),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []),
+                                  appleIntelligenceReady: { false })
+        model.demoMode = true
+        model.start()
+        model.readPhotos()
+        model.tab = .ask
+        #expect(!model.isLocked && !model.photoEvents.isEmpty)
+        let result: Void = model.openTimeline() // Void: the intent has nothing to hand back.
+        #expect(result == ())
+        #expect(model.isLocked && model.tab == .trail)
+        #expect(model.photoEvents.isEmpty && model.movements.isEmpty && model.turns.isEmpty)
+    }
+
     @Test func phoneHasNoHistoryAndOffersTimelineQuestions() {
         let model = phoneModel(ScriptedAnswerer(updates: []))
         model.start()
