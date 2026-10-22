@@ -168,6 +168,7 @@ public struct ConnectedAssistantView: View {
 private struct ConnectedToolApprovalSheet: View {
     let request: ConnectedToolApprovalRequest
     let model: ConnectedAssistant
+    @ScaledMetric private var labelWidth: CGFloat = 88
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -209,7 +210,7 @@ private struct ConnectedToolApprovalSheet: View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .frame(width: 88, alignment: .leading)
+                .frame(width: labelWidth, alignment: .leading)
             Text(value)
                 .font(.callout)
         }

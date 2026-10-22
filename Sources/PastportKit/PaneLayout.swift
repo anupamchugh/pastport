@@ -11,4 +11,19 @@ public enum PaneLayout {
         case .add, .privacy: return [.add, .privacy]
         }
     }
+
+    /// Compact width has four tabs. Regular width has one per pair, since the pair's panes are both on screen.
+    public static func tabs(isRegularWidth: Bool) -> [TimelineModel.Tab] {
+        isRegularWidth ? [.trail, .add] : TimelineModel.Tab.allCases
+    }
+
+    /// The tab to highlight for the selected one.
+    public static func tab(for selection: TimelineModel.Tab, isRegularWidth: Bool) -> TimelineModel.Tab {
+        panes(for: selection, isRegularWidth: isRegularWidth)[0]
+    }
+
+    /// The selection after choosing `tab`: at regular width, choosing the pair already on screen changes nothing.
+    public static func selecting(_ tab: TimelineModel.Tab, current: TimelineModel.Tab, isRegularWidth: Bool) -> TimelineModel.Tab {
+        isRegularWidth && panes(for: current, isRegularWidth: true).contains(tab) ? current : tab
+    }
 }

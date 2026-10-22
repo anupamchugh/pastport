@@ -30,17 +30,23 @@ struct PastportApp: App {
 }
 
 /// One tab at compact width; at regular width `PaneLayout` pairs Timeline with Ask and Add with
-/// Privacy. The selected tab lives in the model, so folding and unfolding keeps it. The tab bar is
-/// the system's (`sidebarAdaptable`), which the system moves aside on the Duo's outer display.
+/// Privacy, with one tab per pair. The selected tab lives in the model, so folding and unfolding
+/// keeps it. The tab bar is the system's (`sidebarAdaptable`), which the system places on the Duo's
+/// outer display.
 struct RootView: View {
     @Bindable var model: TimelineModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
-        TabView(selection: $model.tab) {
-            ForEach(TimelineModel.Tab.allCases) { tab in
+        let isRegular = horizontalSizeClass == .regular
+        let selection = Binding(
+            get: { PaneLayout.tab(for: model.tab, isRegularWidth: isRegular) },
+            set: { model.tab = PaneLayout.selecting($0, current: model.tab, isRegularWidth: isRegular) }
+        )
+        TabView(selection: selection) {
+            ForEach(PaneLayout.tabs(isRegularWidth: isRegular)) { tab in
                 Tab(tab.title, systemImage: tab.symbol, value: tab) {
-                    Panes(model: model, panes: PaneLayout.panes(for: tab, isRegularWidth: horizontalSizeClass == .regular))
+                    Panes(model: model, panes: PaneLayout.panes(for: tab, isRegularWidth: isRegular))
                 }
             }
         }
@@ -48,13 +54,30 @@ struct RootView: View {
     }
 }
 
-/// One pane, or two side by side. The pair uses the system arrangement view where it exists
-/// (iOS 27.1), which keeps both panes clear of the Duo's fold; earlier systems get a plain split.
+/// One pane, or two side by side. Timeline and Ask share one navigation stack and bar, placed
+/// outside the arrangement. The pair uses the system arrangement view where it exists (iOS 27.1),
+/// which keeps both panes clear of the Duo's fold; earlier systems get a plain split.
 private struct Panes: View {
     var model: TimelineModel
     var panes: [TimelineModel.Tab]
 
     var body: some View {
+        if panes.contains(.trail) || panes.contains(.ask) {
+            NavigationStack {
+                content
+                    .navigationTitle(title)
+                    .navigationBarTitleDisplayMode(panes == [.trail] ? .automatic : .inline)
+            }
+        } else {
+            content
+        }
+    }
+
+    private var title: String {
+        panes.contains(.trail) ? (model.isLocked ? "" : "Timeline") : "Ask"
+    }
+
+    @ViewBuilder private var content: some View {
         if panes.count == 2 {
             if #available(iOS 27.1, *) {
                 ArrangementView {
@@ -62,7 +85,7 @@ private struct Panes: View {
                 } secondary: {
                     pane(panes[1])
                 }
-                .arrangementViewStyle(.split.axes(.horizontal))
+                .arrangementViewStyle(.split)
             } else {
                 HStack(spacing: 0) {
                     pane(panes[0]).frame(maxWidth: .infinity)
@@ -109,25 +132,22 @@ struct TimelineScreen: View {
     @Bindable var model: TimelineModel
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.isLocked {
-                    LockedTimelineView(model: model)
-                } else {
-                    VStack(spacing: 0) {
-                        SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
-                        TrailTimelineView(model: model)
-                    }
+        Group {
+            if model.isLocked {
+                LockedTimelineView(model: model)
+            } else {
+                VStack(spacing: 0) {
+                    SessionStatus(model: model).padding(.horizontal, 16).padding(.top, 4)
+                    TrailTimelineView(model: model)
                 }
             }
-            .id(model.contentID)
-            .navigationTitle(model.isLocked ? "" : "Timeline")
-            .toolbar {
-                if !model.isLocked {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Lock and clear", systemImage: "lock") { model.lockAndClear() }
-                            .disabled(model.busy)
-                    }
+        }
+        .id(model.contentID)
+        .toolbar {
+            if !model.isLocked {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Lock and clear", systemImage: "lock") { model.lockAndClear() }
+                        .disabled(model.busy)
                 }
             }
         }
@@ -138,21 +158,17 @@ struct AskScreen: View {
     @Bindable var model: TimelineModel
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.assistantSource == .connected {
-                    ScrollView { ConnectedAssistantView(model: model.connectedAssistant) }
-                } else {
-                    EvidenceAskView(model: model)
-                }
+        Group {
+            if model.assistantSource == .connected {
+                ScrollView { ConnectedAssistantView(model: model.connectedAssistant) }
+            } else {
+                EvidenceAskView(model: model)
             }
-            .id(model.contentID)
-            .navigationTitle("Ask")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    AnswerSourceMenu(model: model).labelStyle(.iconOnly)
-                }
+        }
+        .id(model.contentID)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                AnswerSourceMenu(model: model).labelStyle(.iconOnly)
             }
         }
     }
