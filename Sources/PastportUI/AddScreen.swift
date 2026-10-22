@@ -105,10 +105,11 @@ struct RedactedLine: View {
     }
 
     var body: some View {
-        segments.reduce(Text("")) { text, segment in
-            segment.hidden
-                ? text + Text(String(repeating: "\u{2588}", count: 8)).foregroundStyle(Palette.redaction)
-                : text + Text(segment.text).foregroundStyle(Palette.ink)
+        segments.reduce(Text(verbatim: "")) { text, segment in
+            let piece = segment.hidden
+                ? Text(verbatim: String(repeating: "\u{2588}", count: 8)).foregroundStyle(Palette.redaction)
+                : Text(verbatim: segment.text).foregroundStyle(Palette.ink)
+            return Text("\(text)\(piece)")
         }
         .font(.callout.monospaced())
         .accessibilityLabel(spoken)
