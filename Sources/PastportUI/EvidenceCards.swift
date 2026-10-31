@@ -5,6 +5,7 @@ import SwiftUI
 /// travel comes in runs: a flight, then a room, then an arrival form, over a few days.
 public struct TravelRow: View {
     let booking: Booking
+    @State private var exported = false
 
     public init(booking: Booking) { self.booking = booking }
 
@@ -28,6 +29,18 @@ public struct TravelRow: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
+            if booking.isTravel {
+                Button {
+                    _ = TimelineExport.toICalendar(booking: booking)
+                    exported = true
+                } label: {
+                    Image(systemName: exported ? "checkmark.circle.fill" : "calendar.badge.plus")
+                        .font(.caption)
+                        .foregroundStyle(exported ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Export commitment to Calendar (.ics)")
+            }
         }
         .padding(.vertical, 5).padding(.horizontal, 10)
         .background(.quaternary.opacity(0.25))
@@ -44,6 +57,10 @@ public struct ThreadCard: View {
     @State private var expanded = false
     @State private var revealed = false
     @State private var unlocking = false
+    @State private var showBridge = false
+    @State private var readingSuggestions: [FeedloomSuggestion] = []
+    @State private var synthesizedPlan: IntentActionPlan?
+    @State private var savedToFeedloom = false
 
     public init(thread: IntentThread, unlock: @escaping @MainActor () async -> Bool) {
         self.thread = thread
@@ -103,11 +120,79 @@ public struct ThreadCard: View {
             if !thread.destinations.isEmpty {
                 FlowChips(items: Array(thread.destinations.prefix(4)))
             }
-            if thread.queries.count > visibleQueries || expanded {
-                Button { expanded.toggle() } label: {
-                    Text(expanded ? "Show less" : "Show all \(thread.queries.count) searches")
+
+            if showBridge {
+                VStack(alignment: .leading, spacing: 6) {
+                    Divider().padding(.vertical, 2)
+                    if let plan = synthesizedPlan, !plan.tasks.isEmpty {
+                        Text("Suggested Next Steps").font(.caption.weight(.semibold)).foregroundStyle(.primary)
+                        ForEach(plan.tasks.prefix(2)) { task in
+                            HStack(alignment: .top, spacing: 4) {
+                                Image(systemName: task.isMissingGap ? "exclamationmark.triangle.fill" : "checkmark.circle")
+                                    .font(.caption2)
+                                    .foregroundStyle(task.isMissingGap ? .orange : .secondary)
+                                Text(task.title)
+                                    .font(.caption2)
+                                    .foregroundStyle(task.isMissingGap ? .primary : .secondary)
+                            }
+                        }
+                    }
+
+                    if !readingSuggestions.isEmpty {
+                        Text("From Your Feedloom Library").font(.caption.weight(.semibold)).foregroundStyle(.primary)
+                        ForEach(readingSuggestions.prefix(2)) { item in
+                            HStack(spacing: 4) {
+                                Image(systemName: "book.pages")
+                                    .font(.caption2).foregroundStyle(.blue)
+                                Text(item.title)
+                                    .font(.caption2).lineLimit(1)
+                            }
+                        }
+                    }
+
+                    if let dest = thread.destinations.first {
+                        Button {
+                            try? FeedloomBridge().saveToFeedloom(
+                                url: "https://\(dest)",
+                                title: "\(dest) (\(thread.term.capitalized) research)",
+                                notes: "Saved from Pastport Intent",
+                                tags: [thread.term.lowercased(), "pastport"]
+                            )
+                            savedToFeedloom = true
+                        } label: {
+                            Label(savedToFeedloom ? "Saved to Feedloom" : "Save destination to Feedloom",
+                                  systemImage: savedToFeedloom ? "checkmark" : "bookmark.badge.plus")
+                                .font(.caption2)
+                        }
+                        .buttonStyle(.bordered).controlSize(.mini)
+                        .disabled(savedToFeedloom)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            HStack {
+                if thread.queries.count > visibleQueries || expanded {
+                    Button { expanded.toggle() } label: {
+                        Text(expanded ? "Show less" : "Show all \(thread.queries.count) searches")
+                            .font(.caption2)
+                    }.buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    if !showBridge {
+                        let bridge = FeedloomBridge()
+                        readingSuggestions = bridge.findReadingSuggestions(for: thread.term, keywords: thread.related)
+                        synthesizedPlan = IntentTaskSynthesizer().synthesizePlan(thread: thread)
+                    }
+                    showBridge.toggle()
+                } label: {
+                    Label(showBridge ? "Hide Plan" : "Tasks & Reading",
+                          systemImage: showBridge ? "chevron.up" : "sparkles")
                         .font(.caption2)
-                }.buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.tint)
             }
         }
         .padding(10)

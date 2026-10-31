@@ -37,6 +37,10 @@ public struct FeedloomSuggestion: Identifiable, Sendable, Equatable {
 
 /// Zero-cloud bridge between Pastport's detected intent threads and Feedloom (LinkVault).
 /// Reads and writes to `group.com.anupamchugh.LinkVault` with zero network overhead.
+///
+/// **Privacy Invariant**: Zero private Safari history, search queries, or screenshot OCR content is written into
+/// the App Group container. FeedloomBridge only reads publicly saved bookmarks from Feedloom's pending inbox to suggest
+/// reading, and writes a URL to Feedloom only when the user explicitly triggers 'Save destination to Feedloom' or invokes an App Intent.
 public final class FeedloomBridge: Sendable {
     public static let appGroupID = "group.com.anupamchugh.LinkVault"
     public static let sharedNotification = "com.anupamchugh.LinkVault.urlShared"
