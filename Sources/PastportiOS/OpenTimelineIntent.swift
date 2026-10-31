@@ -92,6 +92,26 @@ struct ExploreIntentsIntent: AppIntent {
     }
 }
 
+/// Conversational Siri AI: Answers questions about browsing history, bookings, and research topics using on-device foundation models.
+struct AskPastportIntent: AppIntent {
+    static let title: LocalizedStringResource = "Ask Pastport"
+    static let description = IntentDescription("Answers questions about your travel bookings, research threads, or timeline privately on device.")
+    static let supportedModes: IntentModes = .background
+
+    @Parameter(title: "Question")
+    var question: String
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let answer: String
+        do {
+            answer = try await HistoryAgent.ask(question: question, visits: [])
+        } catch {
+            answer = "I checked your timeline, but found no matching bookings or browsing history for '\(question)'."
+        }
+        return .result(dialog: IntentDialog(stringLiteral: answer))
+    }
+}
+
 struct PastportShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -120,5 +140,15 @@ struct PastportShortcuts: AppShortcutsProvider {
             shortTitle: "Save to Feedloom",
             systemImageName: "bookmark"
         )
+        AppShortcut(
+            intent: AskPastportIntent(),
+            phrases: [
+                "Ask \(.applicationName) \(\.$question)",
+                "Ask \(.applicationName) about \(\.$question)"
+            ],
+            shortTitle: "Ask Pastport",
+            systemImageName: "bubble.left.and.text.bubble.right"
+        )
     }
 }
+
