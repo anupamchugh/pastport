@@ -27,7 +27,7 @@ iOS does not let apps read Safari history, and Pastport on iPhone and iPad says 
 
 ## Install
 
-Requires macOS 26 or later. Apple Foundation Models require Apple Intelligence enabled on a supported Mac. macOS 27 enables dynamic session profiles; macOS 26 uses a static profile. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
+Requires macOS 27 or later. Apple Foundation Models require Apple Intelligence enabled on a supported Mac; sessions use dynamic profiles. Download the signed, notarized app from the [latest release](https://github.com/anupamchugh/pastport/releases/latest), or build it yourself:
 
 ```bash
 git clone https://github.com/anupamchugh/pastport

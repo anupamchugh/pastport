@@ -5,8 +5,8 @@
 ## Platform
 
 ios and macos. Two native targets share `PastportKit` (domain) and `PastportUI` (views) through `Package.swift`:
-- `PastportiOS`: iPhone and iPad, iOS 26.0, `TARGETED_DEVICE_FAMILY: "1,2"`, no Catalyst, Designed-for-iPad or XR flags (`project.yml`, PastportiOS target).
-- `Pastport` (macOS 26.0): a window plus a menu-bar panel, not sandboxed because it reads Safari history with Full Disk Access (`Sources/PastportBar/App.swift:35,43`).
+- `PastportiOS`: iPhone and iPad, iOS 27.0, `TARGETED_DEVICE_FAMILY: "1,2"`, no Catalyst, Designed-for-iPad or XR flags (`project.yml`, PastportiOS target).
+- `Pastport` (macOS 27.0): a window plus a menu-bar panel, not sandboxed because it reads Safari history with Full Disk Access (`Sources/PastportBar/App.swift:35,43`).
 - A `pastport` CLI (`Sources/pastport/main.swift`).
 
 ## Users
