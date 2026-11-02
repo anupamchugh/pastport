@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(FoundationModels)
 import FoundationModels
-#endif
 
 /// Guided generation over intent threads.
 ///
@@ -35,33 +33,29 @@ public enum Guided {
     /// model declines — a refusal on one thread shouldn't sink a whole monthly brief.
     public static func narrate(_ thread: IntentThread,
                                instruction: String? = nil) async throws -> ThreadNarration? {
-        #if canImport(FoundationModels)
-        if #available(macOS 26, iOS 26, *) {
-            let session = LanguageModelSession(instructions: """
-                You read a person's own browsing, on device, for that person. Be plain and \
-                specific. Never judge them. Never name a place, company, or product that is \
-                not written verbatim in the input.
-                """)
-            session.prewarm()
-            do {
-                let response = try await session.respond(
-                    to: Threads.narrationPrompt(for: thread, instruction: instruction),
-                    generating: GeneratedNarration.self
-                )
-                return narration(from: .produced(
-                    intent: response.content.intent,
-                    exposure: response.content.exposure
-                ))
-            } catch let error as LanguageModelSession.GenerationError {
-                // Guardrails block sensitive input as well as output, so some of a real
-                // history simply cannot be narrated by this backend. Skip, don't fail.
-                if case .guardrailViolation = error {
-                    return narration(from: .guardrailRefusal)
-                }
-                throw CLIError.msg("\(error)")
+        let session = LanguageModelSession(instructions: """
+            You read a person's own browsing, on device, for that person. Be plain and \
+            specific. Never judge them. Never name a place, company, or product that is \
+            not written verbatim in the input.
+            """)
+        session.prewarm()
+        do {
+            let response = try await session.respond(
+                to: Threads.narrationPrompt(for: thread, instruction: instruction),
+                generating: GeneratedNarration.self
+            )
+            return narration(from: .produced(
+                intent: response.content.intent,
+                exposure: response.content.exposure
+            ))
+        } catch let error as LanguageModelSession.GenerationError {
+            // Guardrails block sensitive input as well as output, so some of a real
+            // history simply cannot be narrated by this backend. Skip, don't fail.
+            if case .guardrailViolation = error {
+                return narration(from: .guardrailRefusal)
             }
+            throw CLIError.msg("\(error)")
         }
-        #endif
         throw CLIError.msg("Guided narration needs macOS 26 with Apple Intelligence enabled.")
     }
 
@@ -83,11 +77,9 @@ public enum NarrationAttempt: Equatable, Sendable {
     case guardrailRefusal
 }
 
-#if canImport(FoundationModels)
 
 /// The generated shape. Note what is absent: there is no `place`, `city`, or `country`
 /// field, so constrained sampling gives the model nowhere to invent one.
-@available(macOS 26, iOS 26, *)
 @Generable
 struct GeneratedNarration {
     @Guide(description: "One sentence: what the person was trying to work out.")
@@ -97,4 +89,3 @@ struct GeneratedNarration {
     var exposure: String
 }
 
-#endif

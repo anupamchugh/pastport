@@ -3,8 +3,8 @@ options:
   bundleIdPrefix: com.anupamchugh
   createIntermediateGroups: true
   deploymentTarget:
-    macOS: "26.0"
-    iOS: "26.0"
+    macOS: "27.0"
+    iOS: "27.0"
 
 settings:
   base:
@@ -21,7 +21,7 @@ targets:
   Pastport:
     type: application
     platform: macOS
-    deploymentTarget: "26.0"
+    deploymentTarget: "27.0"
     sources:
       - Sources/PastportBar
     dependencies:
@@ -64,7 +64,7 @@ targets:
   PastportiOS:
     type: application
     platform: iOS
-    deploymentTarget: "26.0"
+    deploymentTarget: "27.0"
     sources:
       - Sources/PastportiOS
     dependencies:

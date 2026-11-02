@@ -155,7 +155,6 @@ public struct PhotoLibraryProvider: PhotoLibraryReading {
     }
 
     private static func classifyImage(_ data: Data) async throws -> [PhotoLabel] {
-        guard #available(macOS 15, *) else { return [] }
         guard !Task.isCancelled else { throw CancellationError() }
         #if compiler(>=6.4)
         let observations = try await ClassifyImageRequest().perform(on: data)

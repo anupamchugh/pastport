@@ -85,8 +85,6 @@ struct TimelineAssistantTests {
         #expect(final?.text == facts.deterministicSummary)
     }
 
-#if canImport(FoundationModels)
-    @available(macOS 26, iOS 26, *)
     @Test func everyUnavailableReasonHasItsOwnWording() {
         let off = FoundationTimelineAnswerer.reason(for: .unavailable(.appleIntelligenceNotEnabled))
         let loading = FoundationTimelineAnswerer.reason(for: .unavailable(.modelNotReady))
@@ -96,7 +94,6 @@ struct TimelineAssistantTests {
         #expect(device == "This device does not support Apple Intelligence.")
         #expect(FoundationTimelineAnswerer.reason(for: .available).isEmpty)
     }
-#endif
 
     // MARK: Redaction summary (slice 12)
 

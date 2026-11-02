@@ -86,13 +86,11 @@ public struct ScreenshotReader: Sendable {
     public init() {
         self.recognize = { url in
             #if compiler(>=6.4)
-            if #available(macOS 15.0, *) {
-                var request = RecognizeTextRequest()
-                request.recognitionLevel = .accurate
-                request.automaticallyDetectsLanguage = true
-                let observations = try await request.perform(on: url)
-                return observations.compactMap { $0.topCandidates(1).first?.string }
-            }
+            var request = RecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.automaticallyDetectsLanguage = true
+            let observations = try await request.perform(on: url)
+            return observations.compactMap { $0.topCandidates(1).first?.string }
 
             #endif
             return try await Task.detached {

@@ -234,11 +234,9 @@ public enum TimelineAnswerPolicy {
     """
 }
 
-#if canImport(FoundationModels)
 import FoundationModels
 
 /// Apple's on-device model with three read-only tools over the in-memory evidence.
-@available(macOS 26, iOS 26, *)
 public struct FoundationTimelineAnswerer: TimelineAnswering {
     public init() {}
 
@@ -291,11 +289,10 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
     /// iOS 27: a dynamic profile keyed on the trail. iOS 26: the same tools, chosen up front.
     static func session(for evidence: TimelineEvidence, log: TimelineToolLog) -> LanguageModelSession {
         #if compiler(>=6.4)
-        if #available(macOS 27, iOS 27, *) {
-            return LanguageModelSession(profile: TimelineDynamicProfile(state: TimelineProfileState(evidence: evidence), log: log))
-        }
-        #endif
+        return LanguageModelSession(profile: TimelineDynamicProfile(state: TimelineProfileState(evidence: evidence), log: log))
+        #else
         return LanguageModelSession(tools: tools(for: evidence, log: log), instructions: TimelineAnswerPolicy.instructions)
+        #endif
     }
 
     /// The tools named by `TimelineTools.names(for:)` for the evidence's trail, in that order.
@@ -327,7 +324,6 @@ public struct FoundationTimelineAnswerer: TimelineAnswering {
     }
 }
 
-@available(macOS 26, iOS 26, *)
 @Generable
 struct TimelineAnswerPayload {
     @Guide(description: "Two or three short sentences using only facts returned by the tools.")
@@ -336,7 +332,6 @@ struct TimelineAnswerPayload {
     var evidenceKinds: [PayloadEvidenceKind]
 }
 
-@available(macOS 26, iOS 26, *)
 @Generable
 enum PayloadEvidenceKind {
     case photoActivity
@@ -352,7 +347,6 @@ enum PayloadEvidenceKind {
 
 #if compiler(>=6.4)
 /// Mirrors `JourneyDynamicProfile`: one profile per trail, reading an immutable snapshot.
-@available(macOS 27, iOS 27, *)
 struct TimelineDynamicProfile: LanguageModelSession.DynamicProfile {
     let state: TimelineProfileState
     let log: TimelineToolLog
@@ -406,7 +400,6 @@ final class TimelineToolLog: @unchecked Sendable {
     }
 }
 
-@available(macOS 26, iOS 26, *)
 struct TimelineCountsTool: Tool {
     let name = "timeline_counts"
     let description = "Counts for the person's timeline: photo events, photos, screenshots, and whether Safari history is readable here."
@@ -421,7 +414,6 @@ struct TimelineCountsTool: Tool {
     }
 }
 
-@available(macOS 26, iOS 26, *)
 struct PhotoActivityTool: Tool {
     let name = "photo_activity"
     let description = "Photo activity bursts with dates, photo and screenshot counts, and on-device scene labels."
@@ -436,7 +428,6 @@ struct PhotoActivityTool: Tool {
     }
 }
 
-@available(macOS 26, iOS 26, *)
 struct AddedScreenshotsTool: Tool {
     let name = "added_screenshots"
     let description = "Scrubbed text of screenshots the person added, such as bookings or receipts. Emails, codes and card numbers are already redacted."
@@ -450,7 +441,6 @@ struct AddedScreenshotsTool: Tool {
         return evidence.screenshotLines.joined(separator: "\n")
     }
 }
-@available(macOS 26, iOS 26, *)
 struct TimelineBookingsTool: Tool {
     let name = TimelineTools.bookings
     let description = "Bookings found in screenshots the person added: kind, date and the first line. A booking screenshot does not prove the trip happened."
@@ -465,7 +455,6 @@ struct TimelineBookingsTool: Tool {
     }
 }
 
-@available(macOS 26, iOS 26, *)
 struct RedactionSummaryTool: Tool {
     let name = TimelineTools.redactionSummary
     let description = "How many emails, one-time codes and card numbers were hidden in added screenshots. Counts only, no text."
@@ -479,4 +468,3 @@ struct RedactionSummaryTool: Tool {
         return evidence.redactionSummary
     }
 }
-#endif

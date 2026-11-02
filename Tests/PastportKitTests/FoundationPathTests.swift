@@ -66,9 +66,7 @@ final class FoundationPathTests: XCTestCase {
         XCTAssertNil(Guided.narration(from: .guardrailRefusal))
     }
 
-    #if canImport(FoundationModels)
     func testSearchToolUsesOnlyTheVisitsItWasGiven() async throws {
-        guard #available(macOS 26, *) else { return }
         let kept = visit("Boarding pass", "https://air.test/eticket")
         let withheld = visit("WITHHELD quartz page", "https://withheld.test/secret")
         let text = try await SearchHistoryTool(visits: [kept]).call(
@@ -82,7 +80,6 @@ final class FoundationPathTests: XCTestCase {
     }
 
     func testStatsToolReportsOnlyTheGivenVisits() async throws {
-        guard #available(macOS 26, *) else { return }
         let kept = visit("A page", "https://included.test/page")
         let text = try await StatsTool(visits: [kept]).call(arguments: StatsTool.Arguments())
         let stats = Stats.compute(from: [kept])
@@ -92,7 +89,6 @@ final class FoundationPathTests: XCTestCase {
     }
 
     func testThreadsToolReportsOnlyTheGivenSearches() async throws {
-        guard #available(macOS 26, *) else { return }
         let kept = [
             visit("kyoto has separate visa? - Google Search", "https://www.google.com/search", hoursAgo: 5),
             visit("kyoto visa on arrival - Google Search", "https://www.google.com/search", hoursAgo: 5),
@@ -111,7 +107,6 @@ final class FoundationPathTests: XCTestCase {
     }
 
     func testBookingsToolReportsOnlyTheGivenBookings() async throws {
-        guard #available(macOS 26, *) else { return }
         let kept = visit("Boarding pass", "https://air.test/eticket")
         let text = try await BookingsTool(visits: [kept]).call(
             arguments: BookingsTool.Arguments(travelOnly: true)
@@ -125,7 +120,6 @@ final class FoundationPathTests: XCTestCase {
     }
 
     func testLocationToolReportsOnlyTheGivenLeaks() async throws {
-        guard #available(macOS 26, *) else { return }
         let kept = visit(
             "Listing",
             "https://maps.google.com/maps?q=@12.9716,77.5946"
@@ -138,5 +132,4 @@ final class FoundationPathTests: XCTestCase {
         XCTAssertFalse(text.contains("48.8584"))
         XCTAssertFalse(text.contains("withheld-maps.test"))
     }
-    #endif
 }

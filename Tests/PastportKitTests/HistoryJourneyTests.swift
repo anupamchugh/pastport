@@ -100,7 +100,6 @@ struct HistoryJourneyTests {
         #expect(!packet.contains("location-bearing URLs:"))
     }
 
-    #if canImport(FoundationModels)
     @Test("the travel tool cannot return an unrelated app authorization page")
     func travelToolEnforcesTravelOnly() async throws {
         let tool = JourneyTravelBookingsTool(visits: [
@@ -112,7 +111,6 @@ struct HistoryJourneyTests {
         #expect(!output.contains("Authorize application"))
         #expect(output.contains("completion is not verified"))
     }
-    #endif
 
     @Test("a broad overview does not promote pages matching generic instruction words")
     func overviewDoesNotSelectIncidentalTitles() {
