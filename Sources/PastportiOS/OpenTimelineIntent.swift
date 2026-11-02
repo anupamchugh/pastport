@@ -143,8 +143,8 @@ struct PastportShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AskPastportIntent(),
             phrases: [
-                "Ask \(.applicationName) \(\.$question)",
-                "Ask \(.applicationName) about \(\.$question)"
+                "Ask \(.applicationName) a question",
+                "Ask \(.applicationName) about my timeline"
             ],
             shortTitle: "Ask Pastport",
             systemImageName: "bubble.left.and.text.bubble.right"
