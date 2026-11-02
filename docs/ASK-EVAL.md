@@ -35,3 +35,23 @@ site. "yesterday", "today", "last week" and month names are real time windows. O
 Of the 16 questions, 14 are now answered in code and 2 reach the model, so "16/16" measures the
 routing and the code answers more than it measures the model. The remaining "invented" name is a
 label the model repeats from its evidence lines (for example "Source").
+
+## iPhone Ask instructions on `fm serve` (2 Nov 2026)
+
+`TimelineAnswerPolicy.instructions` checked on the Mac's on-device Apple model through `fm serve`
+(`127.0.0.1:1976`, model `system`). `fm serve` cannot run Swift tools, so the tool results were
+pasted into the prompt in the app's own line format: 3 photo events (61 photos), one added booking
+screenshot (a Kyoto hotel). Six questions, 5 runs each. "Shown" means the answer passes a copy of
+`HistoryJourneyValidation.allowsNarrative`, the check the app applies; the rest fall back to the
+recorded facts.
+
+| | Before | After |
+|---|---|---|
+| Model answers shown | 19/30 | 18/30 |
+| Shown answers that claim a trip or stay, or say "You don't know" | 9 | 0 |
+| "How many photos in the last 30 days?" gives 61 | 5/5 | 4/5 |
+
+Before: "Your last trip was on Oct 10, 2026." (3 runs), "Yes, you stayed in Kyoto…" (1), and
+"You don't know…" for "What did I do on Saturday?" (5). The check could not catch these: the numbers
+are all in the evidence. After: a booking screenshot is described as a booking for a date, and
+missing facts are "I don't know" plus what is missing. The total-count line did not measurably help.

@@ -204,6 +204,54 @@ struct TimelineModelTests {
         #expect(model.photoEvents.isEmpty && model.input.isEmpty)
     }
 
+    @Test func askingFromSiriOnAColdLaunchStaysLockedAndReadsNothing() async throws {
+        let (model, log) = lockedModel()
+        model.openAsk(question: "  When was my last trip? ") // The intent runs before the window appears.
+        model.start()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(model.isLocked && model.tab == .ask)
+        #expect(model.pendingQuestion == "When was my last trip?")
+        #expect(model.turns.isEmpty && model.photoEvents.isEmpty)
+        #expect(log.value.isEmpty, "nothing is authenticated, read or answered before the person unlocks")
+    }
+
+    @Test func askingFromSiriClearsAnUnlockedSession() async throws {
+        let (model, _) = lockedModel()
+        model.unlock()
+        try await waitUntil { !model.isLocked && !model.photoEvents.isEmpty }
+        model.openAsk(question: "How many photos?")
+        #expect(model.isLocked && model.tab == .ask)
+        #expect(model.photoEvents.isEmpty && model.turns.isEmpty)
+        #expect(model.pendingQuestion == "How many photos?")
+    }
+
+    @Test func unlockingAsksTheWaitingQuestionOnce() async throws {
+        let (model, log) = lockedModel()
+        model.openAsk(question: "When was my last trip?")
+        model.unlock()
+        try await waitUntil { model.turns.count == 1 && !model.busy }
+        #expect(log.value == ["authenticate", "access", "read"])
+        #expect(model.turns.first?.prompt == "When was my last trip?")
+        #expect(model.pendingQuestion == nil && model.input.isEmpty)
+    }
+
+    @Test func aFailedUnlockKeepsTheQuestionWaitingAndAnswersNothing() async throws {
+        let (model, log) = lockedModel(auth: .cancelled)
+        model.openAsk(question: "When was my last trip?")
+        model.unlock()
+        try await waitUntil { !model.busy && log.value.contains("authenticate") }
+        #expect(model.isLocked && model.turns.isEmpty)
+        #expect(model.pendingQuestion == "When was my last trip?")
+        model.lockAndClear()
+        #expect(model.pendingQuestion == nil, "lock clears the waiting question")
+    }
+
+    @Test func anEmptySiriQuestionWaitsForNothing() {
+        let (model, _) = lockedModel()
+        model.openAsk(question: "   ")
+        #expect(model.pendingQuestion == nil && model.tab == .ask)
+    }
+
     @Test func phoneHasNoHistoryAndOffersTimelineQuestions() {
         let model = phoneModel(ScriptedAnswerer(updates: []))
         model.start()

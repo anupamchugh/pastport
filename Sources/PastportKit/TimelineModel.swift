@@ -98,6 +98,9 @@ public final class TimelineModel {
 
     public internal(set) var turns: [AskTurn] = []
     public var input = ""
+    /// A question the "Ask Pastport" App Intent handed over. It waits, unread and unanswered,
+    /// until the person unlocks; then it is asked once. Every lock clears it.
+    public internal(set) var pendingQuestion: String?
 
     public internal(set) var coverage = ""
     public internal(set) var profile = ""
@@ -205,12 +208,21 @@ public final class TimelineModel {
         tab = .trail
     }
 
+    /// What the "Ask Pastport" App Intent does: show Ask on the locked screen with the question
+    /// waiting. Nothing is read or answered until the person unlocks, and Siri gets nothing back.
+    public func openAsk(question: String) {
+        lockAndClear()
+        tab = .ask
+        let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingQuestion = question.isEmpty ? nil : question
+    }
+
     public func lockAndClear() {
         generation = UUID()
         operation?.cancel(); operation = nil; operationID = nil
         unlocked = false; busy = false; isLocked = true
         visits = []; movements = []; threads = []; travel = []; themes = []
-        photoEvents = []; screenshots = []; turns = []; input = ""
+        photoEvents = []; screenshots = []; turns = []; input = ""; pendingQuestion = nil
         coverage = ""; profile = ""; journeyReceipt = nil
         sites = []; trackerSignals = []; historyLoaded = false
         historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
@@ -245,7 +257,12 @@ public final class TimelineModel {
         busy = true
         let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
+            defer {
+                if token == generation, operationID == owner {
+                    busy = false; operationID = nil
+                    askPendingQuestion()
+                }
+            }
             do {
                 // Authentication precedes even the Photos permission prompt.
                 let result = await authenticator.unlock(reason: "read your local photo activity", graceMinutes: 0)
@@ -268,6 +285,14 @@ public final class TimelineModel {
                 isLocked = false
             }
         }
+    }
+
+    /// After a successful unlock, asks the question Siri handed over. A failed unlock keeps it waiting.
+    private func askPendingQuestion() {
+        guard !isLocked, let question = pendingQuestion else { return }
+        pendingQuestion = nil
+        input = question
+        ask()
     }
 
     // MARK: Screenshots

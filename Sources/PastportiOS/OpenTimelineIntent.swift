@@ -16,42 +16,6 @@ struct OpenTimelineIntent: AppIntent {
     }
 }
 
-/// Proactively analyzes active commitments and research bursts to suggest preparation tasks and saved reading.
-struct SuggestPreparationIntent: AppIntent {
-    static let title: LocalizedStringResource = "Suggest Preparation Tasks"
-    static let description = IntentDescription("Analyzes upcoming commitments and research bursts in Pastport to suggest preparation tasks and relevant reading.")
-    static let supportedModes: IntentModes = .background
-
-    @Parameter(title: "Topic Filter")
-    var topic: String?
-
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        let bridge = FeedloomBridge()
-        let synthesizer = IntentTaskSynthesizer()
-
-        // Check demo/current topics
-        let targetTopic = topic ?? "Kyoto"
-        let thread = IntentThread(
-            term: targetTopic.lowercased(),
-            related: ["travel", "stay", "transit"],
-            queries: ["\(targetTopic) accommodation - Search", "\(targetTopic) transit pass - Search"],
-            started: Date(),
-            destinations: ["booking.com", "japan-guide.com"],
-            searchCount: 4
-        )
-
-        let plan = synthesizer.synthesizePlan(thread: thread, existingBookings: [])
-        let suggestions = bridge.findReadingSuggestions(for: targetTopic, keywords: plan.readingTopics)
-
-        var dialogSummary = "Found \(plan.tasks.count) preparation steps for \(targetTopic)."
-        if !suggestions.isEmpty {
-            dialogSummary += " Also found \(suggestions.count) saved articles in Feedloom ready to read."
-        }
-
-        return .result(dialog: IntentDialog(stringLiteral: dialogSummary))
-    }
-}
-
 /// Saves a research link discovered during browsing directly into Feedloom's pending reading list.
 struct SaveResearchToFeedloomIntent: AppIntent {
     static let title: LocalizedStringResource = "Save Research to Feedloom"
@@ -81,34 +45,19 @@ struct SaveResearchToFeedloomIntent: AppIntent {
     }
 }
 
-/// Lists active research threads and decision topics discovered on-device.
-struct ExploreIntentsIntent: AppIntent {
-    static let title: LocalizedStringResource = "Explore Research Topics"
-    static let description = IntentDescription("Lists active research topics and browsing bursts discovered on this device.")
-    static let supportedModes: IntentModes = .background
-
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        return .result(dialog: "Pastport is tracking research threads privately on-device. Open Pastport with Face ID to inspect.")
-    }
-}
-
-/// Conversational Siri AI: Answers questions about browsing history, bookings, and research topics using on-device foundation models.
+/// Hands a question from Siri or Shortcuts to Ask on the locked screen. It reads nothing and
+/// returns nothing: the answer appears in the app after Face ID, never in Siri.
 struct AskPastportIntent: AppIntent {
     static let title: LocalizedStringResource = "Ask Pastport"
-    static let description = IntentDescription("Answers questions about your travel bookings, research threads, or timeline privately on device.")
-    static let supportedModes: IntentModes = .background
+    static let description = IntentDescription("Opens Ask with your question. Pastport answers on this device after you unlock it.")
+    static let supportedModes: IntentModes = .foreground
 
-    @Parameter(title: "Question")
+    @Parameter(title: "Question", requestValueDialog: "What do you want to ask Pastport?")
     var question: String
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        let answer: String
-        do {
-            answer = try await HistoryAgent.ask(question: question, visits: [])
-        } catch {
-            answer = "I checked your timeline, but found no matching bookings or browsing history for '\(question)'."
-        }
-        return .result(dialog: IntentDialog(stringLiteral: answer))
+    @MainActor func perform() async throws -> some IntentResult {
+        SharedTimeline.model.openAsk(question: question)
+        return .result()
     }
 }
 
@@ -124,13 +73,14 @@ struct PastportShortcuts: AppShortcutsProvider {
             systemImageName: "clock.arrow.circlepath"
         )
         AppShortcut(
-            intent: SuggestPreparationIntent(),
+            intent: AskPastportIntent(),
             phrases: [
-                "Suggest preparation tasks in \(.applicationName)",
-                "What should I prepare for in \(.applicationName)"
+                "Ask \(.applicationName)",
+                "Ask \(.applicationName) a question",
+                "Ask my \(.applicationName) timeline"
             ],
-            shortTitle: "Suggest Preparation",
-            systemImageName: "sparkles"
+            shortTitle: "Ask Pastport",
+            systemImageName: "bubble.left.and.text.bubble.right"
         )
         AppShortcut(
             intent: SaveResearchToFeedloomIntent(),
@@ -140,15 +90,5 @@ struct PastportShortcuts: AppShortcutsProvider {
             shortTitle: "Save to Feedloom",
             systemImageName: "bookmark"
         )
-        AppShortcut(
-            intent: AskPastportIntent(),
-            phrases: [
-                "Ask \(.applicationName) a question",
-                "Ask \(.applicationName) about my timeline"
-            ],
-            shortTitle: "Ask Pastport",
-            systemImageName: "bubble.left.and.text.bubble.right"
-        )
     }
 }
-

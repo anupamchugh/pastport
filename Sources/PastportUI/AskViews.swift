@@ -12,7 +12,9 @@ public struct EvidenceAskView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if model.turns.isEmpty { starters }
+                    if let question = model.pendingQuestion {
+                        PendingQuestionCard(model: model, question: question)
+                    } else if model.turns.isEmpty { starters }
                     ForEach(model.turns) { AskTurnView(turn: $0) }
                 }.padding(16)
             }
@@ -45,6 +47,34 @@ public struct EvidenceAskView: View {
                     .font(.callout).foregroundStyle(.secondary)
                 Button("Go to Home") { model.tab = .trail }.buttonStyle(.borderedProminent)
             }
+        }
+    }
+}
+
+/// The question Siri handed over, waiting for an unlock. Nothing has been read to answer it yet.
+private struct PendingQuestionCard: View {
+    var model: TimelineModel
+    let question: String
+
+    private var failed: Bool { model.photoStatus == TimelineModel.unlockFailed }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Unlock to answer").font(.title2.bold())
+            Text("“\(question)”").font(.title3)
+            Text("Pastport reads your timeline on this device after you unlock, then answers here. Nothing has been read yet.")
+                .font(.callout).foregroundStyle(.secondary)
+            if failed { NoticeBanner(TimelineModel.unlockFailed, symbol: "faceid") }
+            Button { model.unlock() } label: {
+                HStack(spacing: 8) {
+                    if model.busy { ProgressView().controlSize(.small) }
+                    Label(failed ? "Try again" : "Unlock and ask", systemImage: "faceid")
+                }
+                .font(.headline).frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(model.busy)
+            .accessibilityHint("Asks for Face ID or your passcode, reads photo activity, then answers the question")
         }
     }
 }
