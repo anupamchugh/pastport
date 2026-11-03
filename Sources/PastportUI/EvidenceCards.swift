@@ -1,11 +1,13 @@
 import PastportKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One commitment in a trip — a ticket, a stay, the paperwork. Denser than a card because
 /// travel comes in runs: a flight, then a room, then an arrival form, over a few days.
 public struct TravelRow: View {
     let booking: Booking
     @State private var exported = false
+    @State private var calendarFile: CalendarDocument?
 
     public init(booking: Booking) { self.booking = booking }
 
@@ -31,15 +33,25 @@ public struct TravelRow: View {
             Spacer()
             if booking.isTravel {
                 Button {
-                    _ = TimelineExport.toICalendar(booking: booking)
-                    exported = true
+                    calendarFile = CalendarDocument(text: TimelineExport.toICalendar(booking: booking))
                 } label: {
                     Image(systemName: exported ? "checkmark.circle.fill" : "calendar.badge.plus")
                         .font(.caption)
                         .foregroundStyle(exported ? .green : .secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Export commitment to Calendar (.ics)")
+                .help("Save as a calendar file (.ics)")
+                .accessibilityLabel(exported ? "Calendar file saved" : "Save as a calendar file")
+                .fileExporter(
+                    isPresented: Binding(get: { calendarFile != nil }, set: { if !$0 { calendarFile = nil } }),
+                    document: calendarFile,
+                    contentType: .calendarEvent,
+                    defaultFilename: "Pastport booking.ics"
+                ) { result in
+                    // The tick means a file was written, not that a button was pressed.
+                    if case .success = result { exported = true }
+                    calendarFile = nil
+                }
             }
         }
         .padding(.vertical, 5).padding(.horizontal, 10)
@@ -275,5 +287,21 @@ public struct FlowChips: View {
                     .background(.tint.opacity(0.14)).clipShape(Capsule())
             }
         }
+    }
+}
+
+/// A booking as an iCalendar file for `fileExporter`.
+struct CalendarDocument: FileDocument {
+    static let readableContentTypes: [UTType] = [.calendarEvent]
+    let text: String
+
+    init(text: String) { self.text = text }
+
+    init(configuration: ReadConfiguration) throws {
+        text = configuration.file.regularFileContents.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }

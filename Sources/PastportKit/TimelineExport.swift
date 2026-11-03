@@ -41,9 +41,8 @@ public enum TimelineExport {
         DTSTAMP:\(dtstamp)
         DTSTART:\(dtstart)
         SUMMARY:\(cleanTitle)
-        DESCRIPTION:Confirmed booking on \(cleanHost) recorded by Pastport.
+        DESCRIPTION:Booking page you visited on \(cleanHost). Pastport saw the page\\, not whether the booking went through.
         URL:\(booking.url)
-        STATUS:CONFIRMED
         END:VEVENT
         END:VCALENDAR
         """

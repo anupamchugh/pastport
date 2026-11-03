@@ -23,6 +23,23 @@ final class TimelineExportTests: XCTestCase {
         XCTAssertTrue(ics.contains("END:VCALENDAR"))
     }
 
+    /// A booking is a page visit. The event must not claim the booking was confirmed.
+    func testCalendarExportDoesNotClaimAConfirmedBooking() {
+        let booking = Booking(
+            time: Date(timeIntervalSince1970: 1770000000),
+            host: "booking.com",
+            kind: .confirmation,
+            title: "Wave House - Arashiyama, Japan",
+            url: "https://booking.com/hotel/wave-house"
+        )
+
+        let ics = TimelineExport.toICalendar(booking: booking)
+
+        XCTAssertFalse(ics.contains("STATUS:CONFIRMED"))
+        XCTAssertFalse(ics.localizedCaseInsensitiveContains("confirmed booking"))
+        XCTAssertTrue(ics.contains("DESCRIPTION:Booking page you visited on booking.com"))
+    }
+
     func testExportIntentTaskToReminderItem() {
         let task = IntentTask(
             id: UUID(),
