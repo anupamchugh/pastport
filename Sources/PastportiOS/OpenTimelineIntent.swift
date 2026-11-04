@@ -41,7 +41,7 @@ struct SaveResearchToFeedloomIntent: AppIntent {
             tags: tags
         )
 
-        return .result(dialog: IntentDialog("Saved '\(title)' directly to your Feedloom library."))
+        return .result(dialog: IntentDialog("Queued '\(title)' for Feedloom to import."))
     }
 }
 

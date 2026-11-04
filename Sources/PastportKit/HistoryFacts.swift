@@ -49,6 +49,8 @@ public enum HistoryFacts {
             return bookings(window, label: label, didBook: didBook, scope: scope)
         case .places:
             return places(window, label: label, scope: scope)
+        case .repositories:
+            return repositories(window, label: label, scope: scope)
         }
     }
 
@@ -62,12 +64,20 @@ public enum HistoryFacts {
         case searched(String)
         case bookings(didBook: Bool)
         case places
+        case repositories
     }
 
     static func classify(_ q: String, visits: [Visit]) -> Kind? {
         func has(_ pattern: String) -> Bool { q.range(of: pattern, options: .regularExpression) != nil }
 
         if let term = searchTerm(in: q) { return .searched(term) }
+
+        let asksForVisitedRepositories = q.range(of: #"\b(?:which|what|list|show)\b"#, options: .regularExpression) != nil
+            && q.range(of: #"\b(?:visited|visit|opened|open|saw|seen)\b"#, options: .regularExpression) != nil
+        if q.contains("github")
+            && q.range(of: #"\b(?:repo|repos|repository|repositories)\b"#, options: .regularExpression) != nil {
+            return asksForVisitedRepositories ? .repositories : nil
+        }
 
         if has(#"\b(?:did|have|had)\s+i\s+(?:ever\s+)?(?:book|booked|reserve|reserved)\b"#) { return .bookings(didBook: true) }
         if has(#"\bhow\s+many\b.*\b(?:booking|bookings|reservation|reservations|itinerar|confirmation|confirmations)"#) { return .bookings(didBook: false) }
@@ -225,5 +235,16 @@ public enum HistoryFacts {
         }
         return DirectAnswer(text: "Map links \(inLabel(label)) name: \(names.prefix(6).joined(separator: ", ")). These come from map addresses in your history; they do not show you were there.",
                             kind: "places", scope: scope.rangeDescription)
+    }
+
+    static func repositories(_ window: [Visit], label: String, scope: HistoryQuestionScope) -> DirectAnswer {
+        let repositories = GitHubHistory.repositories(in: window, limit: 12)
+        guard !repositories.isEmpty else {
+            return DirectAnswer(text: "No GitHub repository pages appear \(inLabel(label)).",
+                                kind: "repositories", scope: scope.rangeDescription)
+        }
+        let links = repositories.map { "[\($0.name)](\($0.url.absoluteString))" }.joined(separator: ", ")
+        return DirectAnswer(text: "GitHub repositories found \(inLabel(label)) (showing up to 12): \(links). These are pages visited in Safari; they do not prove cloning, use, or endorsement.",
+                            kind: "repositories", scope: scope.rangeDescription)
     }
 }

@@ -73,6 +73,7 @@ public struct ThreadCard: View {
     @State private var readingSuggestions: [FeedloomSuggestion] = []
     @State private var synthesizedPlan: IntentActionPlan?
     @State private var savedToFeedloom = false
+    @State private var feedloomError = false
 
     public init(thread: IntentThread, unlock: @escaping @MainActor () async -> Bool) {
         self.thread = thread
@@ -164,20 +165,29 @@ public struct ThreadCard: View {
 
                     if let dest = thread.destinations.first {
                         Button {
-                            try? FeedloomBridge().saveToFeedloom(
-                                url: "https://\(dest)",
-                                title: "\(dest) (\(thread.term.capitalized) research)",
-                                notes: "Saved from Pastport Intent",
-                                tags: [thread.term.lowercased(), "pastport"]
-                            )
-                            savedToFeedloom = true
+                            do {
+                                try FeedloomBridge().saveToFeedloom(
+                                    url: "https://\(dest)",
+                                    title: "\(dest) (\(thread.term.capitalized) research)",
+                                    notes: "Saved from Pastport Intent",
+                                    tags: [thread.term.lowercased(), "pastport"]
+                                )
+                                savedToFeedloom = true
+                                feedloomError = false
+                            } catch {
+                                feedloomError = true
+                            }
                         } label: {
-                            Label(savedToFeedloom ? "Saved to Feedloom" : "Save destination to Feedloom",
+                            Label(savedToFeedloom ? "Queued for Feedloom" : "Save destination to Feedloom",
                                   systemImage: savedToFeedloom ? "checkmark" : "bookmark.badge.plus")
                                 .font(.caption2)
                         }
                         .buttonStyle(.bordered).controlSize(.mini)
                         .disabled(savedToFeedloom)
+                        if feedloomError {
+                            Text("Couldn't queue this link for Feedloom. Try again.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .padding(.top, 4)

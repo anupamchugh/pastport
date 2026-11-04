@@ -4,6 +4,17 @@ import Testing
 
 @Suite("History journey policy")
 struct HistoryJourneyTests {
+    @Test("bounded model work returns at the deadline when cancellation is ignored")
+    func boundedTaskDoesNotWaitForNonCooperativeWork() async throws {
+        let start = ContinuousClock.now
+        await #expect(throws: CLIError.self) {
+            try await boundedTask(timeout: .milliseconds(20), operation: {
+                await Task.detached { nonCooperativeWork() }.value
+            }, onTimeout: {})
+        }
+        #expect(start.duration(to: .now) < .seconds(0.15))
+    }
+
     @Test("Focus suggestions require matching evidence")
     func focusSelectionUsesEvidence() {
         #expect(
@@ -188,4 +199,9 @@ struct HistoryJourneyTests {
         #expect(receipt.didCompact)
         #expect(receipt.summary == "grounded")
     }
+}
+
+private func nonCooperativeWork() -> Int {
+    Thread.sleep(forTimeInterval: 0.2)
+    return 7
 }

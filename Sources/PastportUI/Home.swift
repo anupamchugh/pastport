@@ -262,6 +262,7 @@ struct FindingDetail: View {
 struct HistorySearch: View {
     let model: TimelineModel
     @Binding var query: String
+    @State private var showGitHub = false
 
     private var results: [Visit] { model.search(query) }
     private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -279,6 +280,40 @@ struct HistorySearch: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 10)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            if let summary = model.githubSummary {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("GitHub trail").font(.subheadline.weight(.medium))
+                        Text(summary + ". These are links found in your retained Safari history.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button(showGitHub ? "Hide" : "Show") { showGitHub.toggle() }
+                        .buttonStyle(.borderless)
+                }
+                .padding(.vertical, 2)
+            }
+            if showGitHub {
+                if model.githubRepositories.isEmpty {
+                    Text("No GitHub repository pages found in the loaded history.")
+                        .font(.callout).foregroundStyle(.secondary)
+                } else {
+                    Text("Up to 20 repositories inferred from visited GitHub pages.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(model.githubRepositories) { repository in
+                        Link(destination: repository.url) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(repository.name).font(.callout.weight(.medium))
+                                Text("Visited " + repository.lastVisited.formatted(.dateTime.month(.abbreviated).day().year()))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
             if searching {
                 if results.isEmpty {
                     Text("No page in your history matches \u{201C}\(query)\u{201D}.")

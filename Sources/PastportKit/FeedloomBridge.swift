@@ -70,6 +70,17 @@ public final class FeedloomBridge: Sendable {
             bookmarks.append(contentsOf: decoded)
         }
 
+        // Include links queued by current Pastport and Feedloom share senders.
+        let pendingInbox = container.appendingPathComponent("PendingLinkInbox", isDirectory: true)
+        if let files = try? FileManager.default.contentsOfDirectory(at: pendingInbox, includingPropertiesForKeys: nil) {
+            for file in files where file.pathExtension == "json" {
+                if let data = try? Data(contentsOf: file),
+                   let decoded = try? JSONDecoder().decode([FeedloomBookmark].self, from: data) {
+                    bookmarks.append(contentsOf: decoded)
+                }
+            }
+        }
+
         // Also check any inbox json files dropped by Threadmark claws
         let inboxDir = container.appendingPathComponent("Inbox")
         if let entries = try? FileManager.default.contentsOfDirectory(atPath: inboxDir.path) {
@@ -121,28 +132,16 @@ public final class FeedloomBridge: Sendable {
             try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
         }
 
-        let pendingFile = container.appendingPathComponent("pendingBookmarks.json")
-        var currentBookmarks: [FeedloomBookmark] = []
-
-        if FileManager.default.fileExists(atPath: pendingFile.path),
-           let data = try? Data(contentsOf: pendingFile),
-           let decoded = try? JSONDecoder().decode([FeedloomBookmark].self, from: data) {
-            currentBookmarks = decoded
-        }
-
-        let newBookmark = FeedloomBookmark(
-            url: url,
-            title: title,
-            notes: notes,
-            tags: tags,
+        // One atomically published file per request avoids read-modify-write races with
+        // other senders. Feedloom's updated reader imports and removes each file separately.
+        let inbox = container.appendingPathComponent("PendingLinkInbox", isDirectory: true)
+        try FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
+        let bookmark = FeedloomBookmark(
+            url: url, title: title, notes: notes, tags: tags,
             timestamp: ISO8601DateFormatter().string(from: Date())
         )
-        currentBookmarks.append(newBookmark)
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let encodedData = try encoder.encode(currentBookmarks)
-        try encodedData.write(to: pendingFile, options: [.atomic])
+        let file = inbox.appendingPathComponent("\(UUID().uuidString).json")
+        try JSONEncoder().encode([bookmark]).write(to: file, options: [.atomic])
 
         // Post Darwin notification so Feedloom drains the inbox immediately if active
         #if canImport(CoreFoundation)

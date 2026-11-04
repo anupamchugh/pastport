@@ -94,6 +94,23 @@ struct HistoryFactsTests {
         #expect(answer("Summarize my recent browsing") == nil)
     }
 
+    @Test func githubRepositoryQuestionReturnsCanonicalMarkdownLinks() {
+        let v = [
+            Visit(time: at(-1), title: "ModelRelay", url: "https://github.com/Juanpe/ModelRelay?utm_source=history"),
+            Visit(time: at(-2), title: "ModelRelay", url: "https://github.com/Juanpe/ModelRelay/issues/1")
+        ]
+        let text = HistoryFacts.answer(question: "Which GitHub repositories did I visit?", visits: v, now: now)?.text
+        #expect(text?.contains("[Juanpe/ModelRelay](https://github.com/Juanpe/ModelRelay)") == true)
+        #expect(text?.contains("utm_source") == false)
+        #expect(text?.contains("issues/1") == false)
+    }
+
+    @Test func unrelatedGithubRepositoryQuestionsAreNotAnsweredAsVisitedLists() {
+        let v = [Visit(time: at(-1), title: "ModelRelay", url: "https://github.com/Juanpe/ModelRelay")]
+        #expect(HistoryFacts.answer(question: "How many GitHub repositories did I visit?", visits: v, now: now) == nil)
+        #expect(HistoryFacts.answer(question: "What is the GitHub repository ModelRelay?", visits: v, now: now) == nil)
+    }
+
     @Test func anUnsupportedWindowIsExplainedNotWidened() {
         #expect(answer("How many pages tomorrow?")?.contains("unsupported") == true)
         let text = answer("How many pages in the last 1.5 days?")

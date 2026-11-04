@@ -47,48 +47,31 @@ final class FeedloomBridgeTests: XCTestCase {
         XCTAssertEqual(suggestions.first?.url, "https://pointfree.co/episodes/ep280-metal-shaders")
     }
 
-    func testSaveToFeedloomWritesToPendingBookmarksFile() throws {
+    func testConcurrentSavesKeepEveryRequestAndLeaveLegacyInboxIntact() async throws {
+        let legacy = tempDir.appendingPathComponent("pendingBookmarks.json")
+        let original = Data("not valid JSON".utf8)
+        try original.write(to: legacy)
         let bridge = FeedloomBridge(containerDirectory: tempDir)
-
-        try bridge.saveToFeedloom(
-            url: "https://developer.apple.com/documentation/appintents",
-            title: "App Intents Documentation",
-            notes: "Authoritative Apple reference",
-            tags: ["apple", "appintents", "swift"]
-        )
-
-        let pendingFile = tempDir.appendingPathComponent("pendingBookmarks.json")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: pendingFile.path))
-
-        let data = try Data(contentsOf: pendingFile)
-        let saved = try JSONDecoder().decode([FeedloomBookmark].self, from: data)
-        XCTAssertEqual(saved.count, 1)
-        XCTAssertEqual(saved.first?.title, "App Intents Documentation")
-        XCTAssertEqual(saved.first?.url, "https://developer.apple.com/documentation/appintents")
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for index in 0..<40 {
+                group.addTask {
+                    try bridge.saveToFeedloom(url: "https://example.com/\(index)", title: "\(index)", notes: "", tags: [])
+                }
+            }
+            try await group.waitForAll()
+        }
+        let inbox = tempDir.appendingPathComponent("PendingLinkInbox")
+        let files = try FileManager.default.contentsOfDirectory(at: inbox, includingPropertiesForKeys: nil)
+        let entries = try files.flatMap { try JSONDecoder().decode([FeedloomBookmark].self, from: Data(contentsOf: $0)) }
+        XCTAssertEqual(files.count, 40)
+        XCTAssertEqual(Set(entries.map(\.url)).count, 40)
+        XCTAssertEqual(try Data(contentsOf: legacy), original)
     }
 
-    func testSaveToFeedloomAppendsToExistingPendingBookmarks() throws {
+    func testSuggestionsIncludeQueuedLink() throws {
         let bridge = FeedloomBridge(containerDirectory: tempDir)
-
-        try bridge.saveToFeedloom(
-            url: "https://link1.test",
-            title: "Link One",
-            notes: "Note 1",
-            tags: ["test"]
-        )
-        try bridge.saveToFeedloom(
-            url: "https://link2.test",
-            title: "Link Two",
-            notes: "Note 2",
-            tags: ["test"]
-        )
-
-        let pendingFile = tempDir.appendingPathComponent("pendingBookmarks.json")
-        let data = try Data(contentsOf: pendingFile)
-        let saved = try JSONDecoder().decode([FeedloomBookmark].self, from: data)
-        XCTAssertEqual(saved.count, 2)
-        XCTAssertEqual(saved[0].title, "Link One")
-        XCTAssertEqual(saved[1].title, "Link Two")
+        try bridge.saveToFeedloom(url: "https://example.com/swift", title: "Swift guide", notes: "", tags: [])
+        XCTAssertEqual(bridge.findReadingSuggestions(for: "swift").map(\.title), ["Swift guide"])
     }
 
     func testEmptyContainerReturnsZeroSuggestionsGracefully() {

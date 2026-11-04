@@ -542,6 +542,7 @@ private final class JourneyRuntime {
     private var session: LanguageModelSession
     private var isBusy = false
     private var activeRequestCancellation: (() -> Void)?
+    private var activeRequestID: UUID?
     private var cancelled = false
     private var questionScope: HistoryQuestionScope?
     private var cachedEvidence: JourneyEvidence?
@@ -651,9 +652,9 @@ private final class JourneyRuntime {
         var inputTokens: Int?
         var outputTokens: Int?
 
-        onPartial?("Checking \(evidence.focus.title.lowercased()) in the retained history…")
+        onPartial?("From your retained history (Apple Intelligence is still preparing an answer):\n\n" + evidence.deterministicAnswer)
         do {
-            let streamed = try await runModelStream(prompt: request, evidence: evidence, onPartial: onPartial)
+            let streamed = try await runModelStreamWithTimeout(prompt: request, evidence: evidence, onPartial: onPartial)
             let usage = usageDelta(from: usageBeforeTurn, to: sessionUsage())
             inputTokens = usage?.input
             outputTokens = usage?.output
@@ -665,15 +666,19 @@ private final class JourneyRuntime {
                 before = Array(session.transcript)
                 usageBeforeTurn = sessionUsage()
                 do {
-                    let streamed = try await runModelStream(prompt: request, evidence: evidence, onPartial: onPartial)
+                    let streamed = try await runModelStreamWithTimeout(prompt: request, evidence: evidence, onPartial: onPartial)
                     let usage = usageDelta(from: usageBeforeTurn, to: sessionUsage())
                     inputTokens = usage?.input
                     outputTokens = usage?.output
                     answerText = streamed
                 } catch {
+                    resetSession()
                     answerText = evidence.deterministicAnswer
                 }
             } else {
+                // A timeout or model failure may leave transcript state mid-request.
+                // Start the next question with a fresh session after falling back.
+                resetSession()
                 answerText = evidence.deterministicAnswer
             }
         }
@@ -702,6 +707,7 @@ private final class JourneyRuntime {
         cancelled = true
         activeRequestCancellation?()
         activeRequestCancellation = nil
+        activeRequestID = nil
     }
 
     private func ensureActive() throws {
@@ -711,18 +717,23 @@ private final class JourneyRuntime {
     private func runModelResponse<Content: Generable>(
         _ operation: @escaping @MainActor @Sendable () async throws -> LanguageModelSession.Response<Content>
     ) async throws -> LanguageModelSession.Response<Content> {
+        let requestID = UUID()
         let task = Task { @MainActor in
             try await operation()
         }
+        activeRequestID = requestID
         activeRequestCancellation = { task.cancel() }
-        defer { activeRequestCancellation = nil }
+        defer {
+            if activeRequestID == requestID { activeRequestCancellation = nil; activeRequestID = nil }
+        }
         return try await task.value
     }
 
     private func runModelStream(
         prompt: String,
         evidence: JourneyEvidence,
-        onPartial: (@MainActor @Sendable (String) -> Void)?
+        onPartial: (@MainActor @Sendable (String) -> Void)?,
+        requestID: UUID
     ) async throws -> String {
         let task = Task { @MainActor in
             var finalSections: [JourneyAnswerSection.PartiallyGenerated] = []
@@ -745,7 +756,7 @@ private final class JourneyRuntime {
                 let cumulative = visible.joined(separator: "\n\n")
                 if !cumulative.isEmpty, cumulative != lastPublished {
                     lastPublished = cumulative
-                    onPartial?(cumulative)
+                    if self.activeRequestID == requestID { onPartial?(cumulative) }
                 }
             }
             let rendered = finalSections.compactMap { section -> String? in
@@ -754,9 +765,37 @@ private final class JourneyRuntime {
             }.joined(separator: "\n\n")
             return rendered.isEmpty ? evidence.deterministicAnswer : rendered
         }
+        activeRequestID = requestID
         activeRequestCancellation = { task.cancel() }
-        defer { activeRequestCancellation = nil }
+        defer {
+            if activeRequestID == requestID {
+                activeRequestCancellation = nil
+                activeRequestID = nil
+            }
+        }
         return try await task.value
+    }
+
+    /// Bounds a model request while cancelling the owned stream before returning.
+    /// Foundation Models can take several seconds, but an unavailable model must not
+    /// leave Ask in an indeterminate state forever.
+    private func runModelStreamWithTimeout(
+        prompt: String,
+        evidence: JourneyEvidence,
+        onPartial: (@MainActor @Sendable (String) -> Void)?,
+        timeout: Duration = .seconds(20)
+    ) async throws -> String {
+        let requestID = UUID()
+        return try await boundedTask(timeout: timeout) {
+            try await self.runModelStream(prompt: prompt, evidence: evidence, onPartial: onPartial, requestID: requestID)
+        } onTimeout: {
+            if self.activeRequestID == requestID {
+                let cancel = self.activeRequestCancellation
+                self.activeRequestID = nil
+                self.activeRequestCancellation = nil
+                cancel?()
+            }
+        }
     }
 
     private static func finishedSentences(in text: String) -> String {
@@ -797,8 +836,12 @@ private final class JourneyRuntime {
             try Task.checkCancellation()
             return (resolved, evidence, reusable)
         }
+        let requestID = UUID()
+        activeRequestID = requestID
         activeRequestCancellation = { preparation.cancel() }
-        defer { activeRequestCancellation = nil }
+        defer {
+            if activeRequestID == requestID { activeRequestCancellation = nil; activeRequestID = nil }
+        }
         let (resolved, evidence, reusable) = try await preparation.value
         try ensureActive()
         let prior = state.snapshot
@@ -956,6 +999,99 @@ private final class JourneyRuntime {
         #else
         return false
         #endif
+    }
+}
+
+/// Races an async operation against a deadline without waiting for a non-cooperative
+/// operation while unwinding. The losing task is cancelled; stale model output is ignored
+/// by the journey's existing cancellation/session guards.
+@available(macOS 15.0, *)
+func boundedTask<T: Sendable>(
+    timeout: Duration,
+    operation: @escaping @Sendable () async throws -> T,
+    onTimeout: @escaping @MainActor @Sendable () -> Void
+) async throws -> T {
+    let race = TimeoutRace<T>()
+    return try await withCheckedThrowingContinuation { continuation in
+        race.install(continuation)
+        race.setOperation(Task {
+            do { race.finish(.success(try await operation())) }
+            catch { race.finish(.failure(error)) }
+        })
+        race.setDeadline(Task {
+            do {
+                try await Task.sleep(for: timeout)
+                await race.timeout(
+                    CLIError.msg("Apple Intelligence timed out after \(timeout.components.seconds) seconds"),
+                    beforeResume: onTimeout
+                )
+            } catch { }
+        })
+    }
+}
+
+private final class TimeoutRace<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    private var completed = false
+    var operation: Task<Void, Never>?
+    var deadline: Task<Void, Never>?
+
+    func install(_ continuation: CheckedContinuation<T, Error>) { lock.lock(); self.continuation = continuation; lock.unlock() }
+
+    func setOperation(_ task: Task<Void, Never>) {
+        lock.lock()
+        if completed { lock.unlock(); task.cancel(); return }
+        operation = task
+        lock.unlock()
+    }
+
+    func setDeadline(_ task: Task<Void, Never>) {
+        lock.lock()
+        if completed { lock.unlock(); task.cancel(); return }
+        deadline = task
+        lock.unlock()
+    }
+
+    @discardableResult
+    func finish(_ result: Result<T, Error>) -> Bool {
+        lock.lock()
+        guard !completed else { lock.unlock(); return false }
+        completed = true
+        let continuation = self.continuation
+        self.continuation = nil
+        let operation = self.operation
+        let deadline = self.deadline
+        lock.unlock()
+        operation?.cancel()
+        deadline?.cancel()
+        continuation?.resume(with: result)
+        return true
+    }
+
+    func timeout(_ error: Error, beforeResume: @escaping @MainActor @Sendable () async -> Void) async {
+        guard let claim = claimTimeout() else { return }
+        claim.operation?.cancel()
+        claim.deadline?.cancel()
+        await beforeResume()
+        claim.continuation.resume(throwing: error)
+    }
+
+    private struct TimeoutClaim {
+        let continuation: CheckedContinuation<T, Error>
+        let operation: Task<Void, Never>?
+        let deadline: Task<Void, Never>?
+    }
+
+    private func claimTimeout() -> TimeoutClaim? {
+        lock.lock()
+        guard !completed, let continuation else { lock.unlock(); return nil }
+        completed = true
+        self.continuation = nil
+        let operation = self.operation
+        let deadline = self.deadline
+        lock.unlock()
+        return TimeoutClaim(continuation: continuation, operation: operation, deadline: deadline)
     }
 }
 

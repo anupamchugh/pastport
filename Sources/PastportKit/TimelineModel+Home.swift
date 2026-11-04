@@ -13,6 +13,18 @@ extension TimelineModel {
         return status
     }
 
+    /// Repository links from the currently unlocked, in-memory Mac history.
+    public var githubRepositories: [GitHubHistoryRepository] {
+        historyLoaded ? GitHubHistory.repositories(in: visits) : []
+    }
+
+    /// A plain-language entry point for the repository trail, without implying GitHub API access.
+    public var githubSummary: String? {
+        let count = githubRepositories.count
+        guard count > 0 else { return nil }
+        return String(AttributedString(localized: "^[\(count) recent repository](inflect: true) shown, up to 20").characters)
+    }
+
     /// Pages in the read history whose title or address contains every word, newest first.
     public func search(_ text: String, limit: Int = 40) -> [Visit] {
         let words = text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
@@ -38,6 +50,7 @@ extension TimelineModel {
             if !sites.isEmpty { starters.append("Which sites do I visit most?") }
             starters.append("How many pages did I visit yesterday?")
             if !nameableThreads.isEmpty { starters.append("What was I researching?") }
+            if !githubRepositories.isEmpty { starters.append("Which GitHub repositories did I visit?") }
             if !movements.isEmpty { starters.append("Which places appear in my history?") }
             if !travel.isEmpty { starters.append("How many booking pages did I visit?") }
         } else if !canReadHistory {
