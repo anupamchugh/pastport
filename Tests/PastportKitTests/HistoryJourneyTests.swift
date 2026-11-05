@@ -76,6 +76,22 @@ struct HistoryJourneyTests {
         #expect(!named.hasUnmatchedSearch && named.matches.count == 1)
     }
 
+    @Test("question wording is not a missing topic that discards the evidence")
+    func questionWordingIsNotAMissingTopic() {
+        let visits = [
+            Visit(time: .now, title: "Kettle listing", url: "https://shop.example/p/1"),
+            Visit(time: .now, title: "Leaving Airbnb", url: "https://airbnb.example/r?u=https%3A%2F%2Fmaps.example%2F%3Fll%3D48.8566%252C2.3522"),
+        ]
+        let shopping = JourneyEvidence.make(visits: visits, question: "What was I shopping for?", focus: nil)
+        #expect(!shopping.hasUnmatchedSearch)
+        #expect(shopping.matches.map(\.title) == ["Kettle listing"])
+        let exposed = JourneyEvidence.make(visits: visits, question: "Is my location exposed anywhere in my history?", focus: nil)
+        #expect(!exposed.hasUnmatchedSearch)
+        #expect(exposed.evidenceLines.contains { $0.hasPrefix("location-bearing URLs:") })
+        let missing = JourneyEvidence.make(visits: visits, question: "What was I knitting?", focus: nil)
+        #expect(missing.hasUnmatchedSearch, "a real topic with no matching page still gets only absence evidence")
+    }
+
     @Test("travel example dates cannot be promoted to the full signal range")
     func travelExampleDatesAreNotTheFullRange() throws {
         let first = try #require(ISO8601DateFormatter().date(from: "2026-02-19T12:00:00Z"))

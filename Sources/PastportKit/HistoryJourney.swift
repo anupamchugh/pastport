@@ -320,13 +320,16 @@ struct JourneyEvidence: @unchecked Sendable {
             "travel", "related", "booking", "bookings", "hotel", "hotels", "flight", "flights", "trip", "trips", "checkout", "confirmation", "itinerary",
             "tracking", "patterns", "privacy", "location", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
             "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching",
-            "researching", "researched", "looking", "looked", "trying", "browsing", "browsed", "reading", "visited", "opened", "pages", "sites", "site", "week", "weeks", "month", "months", "today", "yesterday", "recently", "lately", "history", "about"
+            "researching", "researched", "looking", "looked", "trying", "browsing", "browsed", "reading", "visited", "opened", "pages", "sites", "site", "week", "weeks", "month", "months", "today", "yesterday", "recently", "lately", "history", "about",
+            "anywhere", "anything", "something", "everything", "exposed", "exposes", "exposure"
         ]
         let keywords = broadOverview || !matchingRequested ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
+        // "shopping" should find shop.example: match each word and its -ing stem.
+        let patterns = keywords.flatMap { word in [word] + (Self.gerundStem(word).map { [$0] } ?? []) }
         var matches: [Visit] = []
         if !keywords.isEmpty {
             for visit in visits {
-                if keywords.contains(where: { visit.title.localizedCaseInsensitiveContains($0) || visit.url.localizedCaseInsensitiveContains($0) }) {
+                if patterns.contains(where: { visit.title.localizedCaseInsensitiveContains($0) || visit.url.localizedCaseInsensitiveContains($0) }) {
                     matches.append(visit)
                     if matches.count == 24 { break }
                 }
@@ -352,6 +355,14 @@ struct JourneyEvidence: @unchecked Sendable {
             matches: Array(matches.prefix(24)),
             searchTerms: keywords
         )
+    }
+
+    /// "shopping" → "shop", "cooking" → "cook"; nil when the stem would be shorter than 4 letters.
+    static func gerundStem(_ word: String) -> String? {
+        guard word.hasSuffix("ing") else { return nil }
+        var stem = String(word.dropLast(3))
+        if let last = stem.last, stem.count > 4, stem.dropLast().last == last { stem.removeLast() }
+        return stem.count >= 4 ? stem : nil
     }
 
     static func canReuse(previous: HistoryQuestionScope?, resolved: HistoryQuestionScope) -> Bool {
