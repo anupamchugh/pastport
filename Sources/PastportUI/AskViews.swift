@@ -256,6 +256,7 @@ struct HistoryPageRow: View {
     @State private var metadata: LPLinkMetadata?
     @State private var previewFailed = false
     @State private var metadataProvider: LPMetadataProvider?
+    @State private var previewRequest = UUID()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -285,27 +286,43 @@ struct HistoryPageRow: View {
         } message: {
             Text("Pastport will contact \(source.url.host ?? "the website") using the address without query parameters. The site can see this request and may redirect it to another site.")
         }
-        .onDisappear {
-            metadataProvider?.cancel()
-            metadataProvider = nil
-        }
+        .onChange(of: source.id) { _, _ in clearPreview() }
+        .onDisappear { clearPreview() }
     }
 
     private func loadPreview() {
+        clearPreview()
+        let request = previewRequest
+        let url = source.url
         loading = true
         previewFailed = false
         Task { @MainActor in
+            guard request == previewRequest else { return }
             let provider = LPMetadataProvider()
             metadataProvider = provider
             provider.shouldFetchSubresources = false
             do {
-                metadata = try await provider.startFetchingMetadata(for: source.url)
+                let result = try await provider.startFetchingMetadata(for: url)
+                guard request == previewRequest else { return }
+                metadata = result
             } catch {
+                guard request == previewRequest else { return }
                 previewFailed = true
             }
             metadataProvider = nil
             loading = false
         }
+    }
+
+    private func clearPreview() {
+        previewRequest = UUID()
+        metadataProvider?.cancel()
+        metadataProvider = nil
+        metadata = nil
+        loading = false
+        previewFailed = false
+        confirmPreview = false
+        confirmOriginal = false
     }
 }
 
