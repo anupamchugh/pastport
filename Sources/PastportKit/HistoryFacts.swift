@@ -87,7 +87,9 @@ public enum HistoryFacts {
             || has(#"\bwhen\s+did\s+i\s+(?:last\s+)?(?:visit|open|use)\b"#),
            let target = target(in: q, visits: visits) { return .lastVisit(target) }
 
-        if has(#"\b(?:did|have|had)\s+i\s+(?:ever\s+)?(?:visit|visited|open|opened|go\s+to|use|used|see|seen)\b"#),
+        // A yes/no site question starts with the auxiliary. In “Which Apple pages have I
+        // visited?”, matching the embedded “have I visited” would incorrectly count apple.com.
+        if has(#"^\s*(?:did|have|had)\s+i\s+(?:ever\s+)?(?:visit|visited|open|opened|go\s+to|use|used|see|seen)\b"#),
            let target = target(in: q, visits: visits) { return .visited(target) }
 
         if has(#"\b(?:which|what)\s+places?\b"#) || has(#"\bwhat\s+places\b"#) || has(#"\bplaces\s+(?:appear|show|are|in)\b"#) { return .places }

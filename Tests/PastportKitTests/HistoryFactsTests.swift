@@ -94,6 +94,13 @@ struct HistoryFactsTests {
         #expect(answer("Summarize my recent browsing") == nil)
     }
 
+    @Test func pageListQuestionIsNotMistakenForAHostVisitQuestion() {
+        let v = [visit(-1, "apple.com", "Apple"),
+                 visit(-1, "developer.apple.com", "Foundation Models", path: "/documentation/foundationmodels")]
+        #expect(HistoryFacts.answer(question: "Which Apple Foundation Models pages have I visited?", visits: v, now: now) == nil)
+        #expect(HistoryFacts.answer(question: "Have I visited apple.com?", visits: v, now: now)?.kind == "visited")
+    }
+
     @Test func githubRepositoryQuestionReturnsCanonicalMarkdownLinks() {
         let v = [
             Visit(time: at(-1), title: "ModelRelay", url: "https://github.com/Juanpe/ModelRelay?utm_source=history"),

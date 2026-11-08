@@ -247,7 +247,7 @@ private struct ResearchNoteDocument: FileDocument {
 }
 
 /// Metadata requests happen only after the person explicitly chooses to contact the site.
-private struct HistoryPageRow: View {
+struct HistoryPageRow: View {
     let source: HistoryPageMatch
     @Environment(\.openURL) private var openURL
     @State private var confirmOriginal = false

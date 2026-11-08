@@ -92,17 +92,24 @@ public struct HomeView: View {
     }
 
     public var body: some View {
-        if !model.hasContent {
-            ScrollView { WelcomeView(model: model).frame(minHeight: 460) }
-        } else if model.historyLoaded {
-            if let detail {
-                FindingDetail(model: model, focus: detail) { self.detail = nil }
+        Group {
+            if !model.hasContent {
+                ScrollView { WelcomeView(model: model).frame(minHeight: 460) }
+            } else if model.historyLoaded {
+                if let detail {
+                    FindingDetail(model: model, focus: detail) { self.detail = nil }
+                } else {
+                    ScrollView { findings.padding(16) }
+                }
             } else {
-                ScrollView { findings.padding(16) }
+                ScrollView { timeline.padding(16) }.contentMargins(.bottom, 24, for: .scrollContent)
             }
-        } else {
-            ScrollView { timeline.padding(16) }.contentMargins(.bottom, 24, for: .scrollContent)
         }
+        #if os(macOS)
+        .onChange(of: model.historyLoaded) { _, loaded in
+            if !loaded { selectedVisit = nil }
+        }
+        #endif
     }
 
     // MARK: Mac: findings from Safari history
@@ -202,9 +209,8 @@ public struct HomeView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 Text("This page appears in your Safari history. Its contents have not been read.")
                     .font(.caption).foregroundStyle(.secondary)
-                if let url = URL(string: visit.cleanURL), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil, url.user == nil {
-                    Link("Open page", destination: url).buttonStyle(.borderedProminent)
-                    Text("Link parameters are removed for privacy.").font(.caption2).foregroundStyle(.secondary)
+                if let source = HistoryPageMatch.matching([visit]).first {
+                    HistoryPageRow(source: source)
                 }
             } else {
                 Image(systemName: "sidebar.right").font(.title2).foregroundStyle(.secondary)
