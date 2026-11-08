@@ -32,9 +32,9 @@ struct HistoryJourneyTests {
         let old = Date(timeIntervalSince1970: 100)
         let recent = Date(timeIntervalSince1970: 200)
         let sources = HistoryPageMatch.matching([
-            Visit(time: old, title: "Older", url: "https://example.com/article?tracking=1#section"),
-            Visit(time: recent, title: "Recent", url: "https://example.com/article?tracking=1#section"),
-            Visit(time: old, title: "Same page, different tracking", url: "https://example.com/article?tracking=other"),
+            Visit(time: old, title: "Older", url: "https://example.com/article?utm_source=one#section"),
+            Visit(time: recent, title: "Recent", url: "https://example.com/article?utm_source=one#section"),
+            Visit(time: old, title: "Same page, different tracking", url: "https://example.com/article?utm_source=other"),
             Visit(time: recent, title: "Local file", url: "file:///tmp/private"),
             Visit(time: recent, title: "Credentials", url: "https://name:password@example.com/secret")
         ])
@@ -42,8 +42,16 @@ struct HistoryJourneyTests {
         let source = try #require(sources.first)
         #expect(source.title == "Recent")
         #expect(source.url.absoluteString == "https://example.com/article")
-        #expect(source.originalURL.absoluteString == "https://example.com/article?tracking=1#section")
+        #expect(source.originalURL.absoluteString == "https://example.com/article?utm_source=one#section")
         #expect(HistoryPageMatch.matching([], limit: 0).isEmpty)
+    }
+    @Test("different search queries remain distinct despite sanitized display URLs")
+    func matchingSourcesPreserveFunctionalQueries() {
+        let sources = HistoryPageMatch.matching([
+            Visit(time: .now, title: "First search", url: "https://example.com/search?q=first&utm_source=a"),
+            Visit(time: .now, title: "Second search", url: "https://example.com/search?q=second&utm_source=b")
+        ])
+        #expect(sources.count == 2)
     }
     @Test("bounded model work returns at the deadline when cancellation is ignored")
     func boundedTaskDoesNotWaitForNonCooperativeWork() async throws {

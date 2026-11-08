@@ -112,13 +112,28 @@ public struct HistoryPageMatch: Identifiable, Sendable, Equatable {
                   let url = URL(string: visit.cleanURL),
                   let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
                   url.host != nil, url.user == nil, url.password == nil,
-                  seen.insert(url.absoluteString).inserted else { continue }
+                  seen.insert(deduplicationKey(originalURL)).inserted else { continue }
             let title = visit.title.trimmingCharacters(in: .whitespacesAndNewlines)
             result.append(HistoryPageMatch(url: url, originalURL: originalURL,
                                            title: title.isEmpty ? visit.host : title, date: visit.time))
             if result.count >= limit { break }
         }
         return result
+    }
+
+    /// Remove common tracking fields for deduplication, but keep functional query
+    /// parameters: two searches on the same path may represent different pages.
+    private static func deduplicationKey(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url.absoluteString }
+        components.fragment = nil
+        if let items = components.queryItems {
+            let kept = items.filter { item in
+                let name = item.name.lowercased()
+                return !name.hasPrefix("utm_") && !["fbclid", "gclid", "mc_eid"].contains(name)
+            }
+            components.queryItems = kept.isEmpty ? nil : kept
+        }
+        return components.string ?? url.absoluteString
     }
 }
 
