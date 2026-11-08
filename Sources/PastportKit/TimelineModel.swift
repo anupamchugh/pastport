@@ -20,6 +20,7 @@ public struct AskTurn: Identifiable, Sendable, Equatable {
     public var note: String?
     /// Source labels the answer used, kept only where a matching tool ran.
     public var evidenceKinds: [EvidenceKind] = []
+    public var matchingSources: [HistoryPageMatch] = []
 
     public init(id: UUID = UUID(), prompt: String, answer: String = "", toolsUsed: [String] = [],
                 status: Status = .answering, note: String? = nil) {
@@ -602,7 +603,10 @@ public final class TimelineModel {
                 guard isActive(turnID, token) else { return }
                 journeyReceipt = result.receipt; profile = result.receipt.details
                 if let answeredFocus = HistoryFocus(rawValue: result.receipt.mode) { historyFocus = answeredFocus }
-                update(turnID) { $0.answer = result.text; $0.toolsUsed = result.receipt.toolCalls; $0.status = .answered }
+                update(turnID) {
+                    $0.answer = result.text; $0.toolsUsed = result.receipt.toolCalls
+                    $0.matchingSources = result.matchingSources; $0.status = .answered
+                }
             } else if let localModels, !model.isEmpty {
                 let evidence = AskWorkflow.evidence(for: AskWorkflow.intent(for: q), visits: visits)
                 let name = model

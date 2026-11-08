@@ -90,13 +90,45 @@ public struct JourneyRecommendation: Sendable {
     }
 }
 
+/// A locally recorded match, not a claim that its page content was read.
+public struct HistoryPageMatch: Identifiable, Sendable, Equatable {
+    public let url: URL
+    /// Retained in memory for an explicit open action; never sent to the model.
+    public let originalURL: URL
+    public let title: String
+    public let date: Date
+    public var id: String { originalURL.absoluteString }
+
+    public static func matching(_ visits: [Visit], limit: Int = 6) -> [HistoryPageMatch] {
+        guard limit > 0 else { return [] }
+        var seen = Set<String>()
+        var result: [HistoryPageMatch] = []
+        for visit in visits.sorted(by: { $0.time > $1.time }) {
+            guard let originalURL = URL(string: visit.url),
+                  let originalScheme = originalURL.scheme?.lowercased(), ["http", "https"].contains(originalScheme),
+                  originalURL.host != nil, originalURL.user == nil, originalURL.password == nil,
+                  let url = URL(string: visit.cleanURL),
+                  let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+                  url.host != nil, url.user == nil, url.password == nil,
+                  seen.insert(originalURL.absoluteString).inserted else { continue }
+            let title = visit.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(HistoryPageMatch(url: url, originalURL: originalURL,
+                                           title: title.isEmpty ? visit.host : title, date: visit.time))
+            if result.count >= limit { break }
+        }
+        return result
+    }
+}
+
 public struct HistoryAnswer: Sendable {
     public let text: String
     public let receipt: JourneyReceipt
+    public let matchingSources: [HistoryPageMatch]
 
-    public init(text: String, receipt: JourneyReceipt) {
+    public init(text: String, receipt: JourneyReceipt, matchingSources: [HistoryPageMatch] = []) {
         self.text = text
         self.receipt = receipt
+        self.matchingSources = matchingSources
     }
 }
 
@@ -710,7 +742,8 @@ private final class JourneyRuntime {
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 summary: "Answer grounded in deterministic retained-history evidence."
-            )
+            ),
+            matchingSources: HistoryPageMatch.matching(evidence.matches)
         )
     }
 

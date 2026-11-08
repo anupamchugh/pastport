@@ -1,6 +1,7 @@
 import PastportKit
 import SwiftUI
 import UniformTypeIdentifiers
+import LinkPresentation
 
 /// Ask over what has been read: starter questions, streamed answers, one Stop.
 public struct EvidenceAskView: View {
@@ -15,7 +16,9 @@ public struct EvidenceAskView: View {
                     if let question = model.pendingQuestion {
                         PendingQuestionCard(model: model, question: question)
                     } else if model.turns.isEmpty { starters }
-                    ForEach(model.turns) { AskTurnView(turn: $0) }
+                    ForEach(model.turns) { turn in
+                        AskTurnView(turn: turn, onFollowUp: { model.input = $0 })
+                    }
                 }.padding(16)
             }
             .defaultScrollAnchor(.bottom)
@@ -109,8 +112,14 @@ public struct AskComposer: View {
 /// One question, its answer, the tools the answer used, and how it ended.
 public struct AskTurnView: View {
     let turn: AskTurn
+    let onFollowUp: ((String) -> Void)?
+    @State private var showingMarkdown = false
+    @State private var exportingMarkdown = false
 
-    public init(turn: AskTurn) { self.turn = turn }
+    public init(turn: AskTurn, onFollowUp: ((String) -> Void)? = nil) {
+        self.turn = turn
+        self.onFollowUp = onFollowUp
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -126,6 +135,23 @@ public struct AskTurnView: View {
                     .foregroundStyle(turn.answer.isEmpty ? .secondary : .primary)
                 if !turn.evidenceKinds.isEmpty {
                     HStack(spacing: 6) { ForEach(turn.evidenceKinds, id: \.self) { SourceLabel($0.sourceLabel) } }
+                }
+                if !turn.matchingSources.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Matching pages").font(.headline)
+                        Text("From your history. Page contents haven’t been read; link parameters are removed for privacy.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        ForEach(sourceHosts, id: \.self) { host in
+                            Text(host).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            ForEach(turn.matchingSources.filter { ($0.url.host ?? "") == host }) { source in
+                                HistoryPageRow(source: source)
+                            }
+                        }
+                        Button("Preview Markdown…") { showingMarkdown = true }.font(.caption)
+                        if let onFollowUp {
+                            Button("Ask a follow-up") { onFollowUp("Find more related pages") }.font(.caption)
+                        }
+                    }
                 }
                 if !basis.isEmpty || !turn.toolsUsed.isEmpty {
                     DisclosureGroup("Based on") {
@@ -151,13 +177,42 @@ public struct AskTurnView: View {
             .padding(.trailing, 24)
         }
         .accessibilityElement(children: .contain)
+        .sheet(isPresented: $showingMarkdown) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Research note preview").font(.title2.bold())
+                Text("This note contains your question and matching history. Choose where to save it.")
+                    .font(.caption).foregroundStyle(.secondary)
+                ScrollView { Text(markdownNote).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                HStack {
+                    Button("Close") { showingMarkdown = false }
+                    Spacer()
+                    Button("Save Markdown…") { exportingMarkdown = true }.buttonStyle(.borderedProminent)
+                }
+            }.padding().frame(minWidth: 340, minHeight: 300)
+                .fileExporter(isPresented: $exportingMarkdown, document: ResearchNoteDocument(text: markdownNote),
+                              contentType: UTType(filenameExtension: "md") ?? .plainText,
+                              defaultFilename: "Pastport research") { _ in }
+        }
     }
 
     private static let basisMarker = "\nSource evidence: "
+    private var sourceHosts: [String] {
+        Array(Set(turn.matchingSources.map { $0.url.host ?? "" })).sorted()
+    }
 
     /// The answer without the evidence lines the model path appends; those sit under "Based on".
     private var shownAnswer: String {
-        turn.answer.components(separatedBy: Self.basisMarker).first ?? turn.answer
+        let answer = turn.answer.components(separatedBy: Self.basisMarker).first ?? turn.answer
+        guard !turn.matchingSources.isEmpty else { return answer }
+        let lines = answer.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("matching visits:") }
+        let cleaned = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "Found matching pages in your history." : cleaned
+    }
+
+    private var markdownNote: String {
+        let links = turn.matchingSources.map { "- [\($0.title.replacingOccurrences(of: "]", with: "\\]"))](\($0.url.absoluteString))" }
+        return "# Research note\n\nQuestion: \(turn.prompt)\n\n\(shownAnswer)\n\n## Matching pages\n\n" + links.joined(separator: "\n")
     }
 
     private var basis: String {
@@ -178,6 +233,95 @@ public struct AskTurnView: View {
         }
     }
 }
+
+private struct ResearchNoteDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.plainText] }
+    let text: String
+    init(text: String) { self.text = text }
+    init(configuration: ReadConfiguration) throws {
+        text = String(data: configuration.file.regularFileContents ?? Data(), encoding: .utf8) ?? ""
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+/// Metadata requests happen only after the person explicitly chooses to contact the site.
+private struct HistoryPageRow: View {
+    let source: HistoryPageMatch
+    @Environment(\.openURL) private var openURL
+    @State private var confirmOriginal = false
+    @State private var confirmPreview = false
+    @State private var loading = false
+    @State private var metadata: LPLinkMetadata?
+    @State private var previewFailed = false
+    @State private var metadataProvider: LPMetadataProvider?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Link(destination: source.url) {
+                Label(source.title, systemImage: "link").lineLimit(2)
+            }
+            Text("\(source.url.host ?? "") · \(source.date.formatted(date: .abbreviated, time: .omitted))")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                if source.originalURL != source.url {
+                    Button("Open original link…") { confirmOriginal = true }
+                }
+                Button(loading ? "Loading preview…" : "Load link preview…") { confirmPreview = true }
+                    .disabled(loading)
+            }.font(.caption)
+            if let metadata { HistoryLinkPreview(metadata: metadata).frame(height: 90) }
+            if previewFailed { Text("Preview unavailable.").font(.caption).foregroundStyle(.secondary) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .confirmationDialog("Open the original link?", isPresented: $confirmOriginal) {
+            Button("Open original link") { openURL(source.originalURL) }
+        } message: {
+            Text("The original address may contain search terms or other private parameters. Opening it sends the address to the website.")
+        }
+        .confirmationDialog("Load a link preview?", isPresented: $confirmPreview) {
+            Button("Contact website") { loadPreview() }
+        } message: {
+            Text("Pastport will contact \(source.url.host ?? "the website") using the address without query parameters. The site can see this request and may redirect it to another site.")
+        }
+        .onDisappear {
+            metadataProvider?.cancel()
+            metadataProvider = nil
+        }
+    }
+
+    private func loadPreview() {
+        loading = true
+        previewFailed = false
+        Task { @MainActor in
+            let provider = LPMetadataProvider()
+            metadataProvider = provider
+            provider.shouldFetchSubresources = false
+            do {
+                metadata = try await provider.startFetchingMetadata(for: source.url)
+            } catch {
+                previewFailed = true
+            }
+            metadataProvider = nil
+            loading = false
+        }
+    }
+}
+
+#if os(macOS)
+private struct HistoryLinkPreview: NSViewRepresentable {
+    let metadata: LPLinkMetadata
+    func makeNSView(context: Context) -> LPLinkView { LPLinkView(metadata: metadata) }
+    func updateNSView(_ view: LPLinkView, context: Context) { view.metadata = metadata }
+}
+#else
+private struct HistoryLinkPreview: UIViewRepresentable {
+    let metadata: LPLinkMetadata
+    func makeUIView(context: Context) -> LPLinkView { LPLinkView(metadata: metadata) }
+    func updateUIView(_ view: LPLinkView, context: Context) { view.metadata = metadata }
+}
+#endif
 
 /// Render model output as markdown. `Text(someString)` shows `**bold**` with the asterisks
 /// visible, because SwiftUI only parses markdown from a literal. Falls back to the raw text.
