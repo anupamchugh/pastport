@@ -571,6 +571,23 @@ private struct JourneyRecommendationPayload {
     var suggestedQuestions: [String]
 }
 
+enum JourneyRecommendationSchema {
+    static func make(supported: [HistoryFocus]) throws -> GenerationSchema {
+        let focus = DynamicGenerationSchema(
+            type: String.self,
+            guides: [.anyOf(supported.map(\.rawValue))]
+        )
+        let step = DynamicGenerationSchema(name: "JourneyPlanStep", properties: [
+            .init(name: "focus", description: "A focus supported by the evidence packet.", schema: focus)
+        ])
+        let root = DynamicGenerationSchema(name: "JourneyRecommendationPayload", properties: [
+            .init(name: "steps", description: "Choose distinct evidence-supported trail steps.", schema: .init(arrayOf: .init(referenceTo: "JourneyPlanStep"), minimumElements: 1, maximumElements: 3)),
+            .init(name: "suggestedQuestions", description: "Concise follow-up questions grounded in the evidence packet.", schema: .init(arrayOf: .init(type: String.self), minimumElements: 0, maximumElements: 3))
+        ])
+        return try GenerationSchema(root: root, dependencies: [step])
+    }
+}
+
 @Generable
 private enum JourneyEvidenceLabel: String {
     case visits, window, categories
@@ -683,19 +700,21 @@ private final class JourneyRuntime {
 
         let request = JourneyPrompts.recommendation(prompt: prompt, evidence: evidence)
         do {
+            let schema = try JourneyRecommendationSchema.make(supported: evidence.supportedFocuses)
             let response = try await runModelResponse {
-                try await self.session.respond(to: Prompt(request), generating: JourneyRecommendationPayload.self)
+                try await self.session.respond(to: Prompt(request), schema: schema)
             }
             let usage = responseUsage(response)
             inputTokens = usage?.input
             outputTokens = usage?.output
+            let content = try JourneyRecommendationPayload(response.content)
             let candidate = JourneyPlanner.validatedFocuses(
-                response.content.steps.map { $0.focus.rawValue },
+                content.steps.map { $0.focus.rawValue },
                 supported: evidence.supportedFocuses
             )
             if !candidate.isEmpty { selected = candidate }
             usedModel = !candidate.isEmpty
-            let candidateQuestions = response.content.suggestedQuestions
+            let candidateQuestions = content.suggestedQuestions
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
             if !candidateQuestions.isEmpty { questions = Array(candidateQuestions.prefix(3)) }

@@ -1,9 +1,22 @@
 import Foundation
+import FoundationModels
 import Testing
 @testable import PastportKit
 
 @Suite("History journey policy")
 struct HistoryJourneyTests {
+    @Test("dynamic trail schema produces an evidence-supported nested plan",
+          .enabled(if: SystemLanguageModel.default.isAvailable, "Needs Apple Intelligence"))
+    func dynamicTrailSchemaWithModel() async throws {
+        let journey = HistoryJourney(
+            visits: [Visit(time: .now, title: "A page", url: "https://example.com/page")],
+            scope: "fictional test history"
+        )
+        let recommendation = try await journey.recommend("Suggest a trail for this history.")
+        await journey.clear()
+        #expect(recommendation.usedModel, "The dynamic schema must produce a model result, not the fallback")
+        #expect(recommendation.focuses == [.overview])
+    }
     @Test("trail planning rejects unsupported and duplicate stages")
     func trailPlanUsesOnlySupportedDistinctFocuses() {
         let stages = JourneyPlanner.validatedFocuses(
