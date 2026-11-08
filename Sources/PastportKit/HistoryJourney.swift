@@ -112,7 +112,7 @@ public struct HistoryPageMatch: Identifiable, Sendable, Equatable {
                   let url = URL(string: visit.cleanURL),
                   let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
                   url.host != nil, url.user == nil, url.password == nil,
-                  seen.insert(originalURL.absoluteString).inserted else { continue }
+                  seen.insert(url.absoluteString).inserted else { continue }
             let title = visit.title.trimmingCharacters(in: .whitespacesAndNewlines)
             result.append(HistoryPageMatch(url: url, originalURL: originalURL,
                                            title: title.isEmpty ? visit.host : title, date: visit.time))

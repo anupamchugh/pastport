@@ -34,6 +34,7 @@ struct HistoryJourneyTests {
         let sources = HistoryPageMatch.matching([
             Visit(time: old, title: "Older", url: "https://example.com/article?tracking=1#section"),
             Visit(time: recent, title: "Recent", url: "https://example.com/article?tracking=1#section"),
+            Visit(time: old, title: "Same page, different tracking", url: "https://example.com/article?tracking=other"),
             Visit(time: recent, title: "Local file", url: "file:///tmp/private"),
             Visit(time: recent, title: "Credentials", url: "https://name:password@example.com/secret")
         ])
