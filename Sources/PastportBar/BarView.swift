@@ -1,5 +1,6 @@
 import AppKit
 import PastportKit
+import PastportMac
 import PastportUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -124,3 +125,11 @@ struct BarView: View {
         .padding(.horizontal, 16).padding(.vertical, 10)
     }
 }
+
+#if DEBUG
+/// Starts locked; reading Safari still requires the normal user action and permissions.
+#Preview("Pastport Mac — history access") {
+    BarView(m: TimelineModel(history: SafariHistorySource()))
+        .frame(width: 1000, height: 700)
+}
+#endif
