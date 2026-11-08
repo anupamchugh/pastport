@@ -45,10 +45,10 @@ public struct EvidenceAskView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Nothing to ask about yet").font(.title2.bold())
                 Text(model.canReadHistory
-                     ? "Read your history on the Home tab, then come back to ask about it."
+                     ? "Read your history on the Timeline, then come back to ask about it."
                      : "Read your photos or add a screenshot on the Home tab, then come back to ask about it.")
                     .font(.callout).foregroundStyle(.secondary)
-                Button("Go to Home") { model.tab = .trail }.buttonStyle(.borderedProminent)
+                Button(model.canReadHistory ? "Go to Timeline" : "Go to Home") { model.tab = .trail }.buttonStyle(.borderedProminent)
             }
         }
     }

@@ -12,22 +12,30 @@ struct BarView: View {
     @State private var exportDocument: ExperimentDocument?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            SessionStatus(model: m).padding(.horizontal, 16).padding(.top, 8)
-            Group {
-                switch m.tab {
-                case .trail, .add, .privacy:
-                    HomeView(model: m)
-                case .ask:
-                    if m.assistantSource == .connected {
-                        ConnectedAssistantView(model: m.connectedAssistant)
-                    } else {
-                        EvidenceAskView(model: m)
-                    }
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                if geometry.size.width >= 760 {
+                    sidebar
+                    Divider()
                 }
-            }.id(m.contentID)
+                VStack(spacing: 0) {
+                    header(showTabs: geometry.size.width < 760)
+                    Divider()
+                    SessionStatus(model: m).padding(.horizontal, 16).padding(.top, 8)
+                    Group {
+                        switch m.tab {
+                        case .trail, .add, .privacy:
+                            HomeView(model: m)
+                        case .ask:
+                            if m.assistantSource == .connected {
+                                ConnectedAssistantView(model: m.connectedAssistant)
+                            } else {
+                                EvidenceAskView(model: m)
+                            }
+                        }
+                    }.id(m.contentID)
+                }
+            }
         }
         .frame(minWidth: 420, minHeight: 560)
         .onAppear { m.start() }
@@ -41,12 +49,41 @@ struct BarView: View {
         .onChange(of: m.contentID) { exporting = false; exportDocument = nil }
     }
 
-    private var header: some View {
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Pastport", systemImage: "clock.arrow.circlepath")
+                .font(.headline).padding(.horizontal, 10).padding(.bottom, 18)
+            sidebarButton("Timeline", symbol: "clock", tab: .trail)
+            sidebarButton("Ask", symbol: "bubble.left.and.text.bubble.right", tab: .ask)
+            Spacer()
+            Label("On this Mac", systemImage: "lock.shield")
+                .font(.caption).foregroundStyle(.secondary).padding(10)
+        }
+        .padding(.horizontal, 10).padding(.top, 20).padding(.bottom, 12)
+        .frame(width: 190).frame(maxHeight: .infinity, alignment: .topLeading)
+        .background(.bar)
+    }
+
+    private func sidebarButton(_ title: String, symbol: String, tab: TimelineModel.Tab) -> some View {
+        Button { m.tab = tab } label: {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(m.tab == tab ? Color.accentColor.opacity(0.2) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain)
+    }
+
+    private func header(showTabs: Bool) -> some View {
         HStack(spacing: 12) {
-            Picker("Section", selection: $m.tab) {
-                ForEach(TimelineModel.Tab.macTabs) { Text($0.rawValue).tag($0) }
+            if showTabs {
+                Picker("Section", selection: $m.tab) {
+                    ForEach(TimelineModel.Tab.macTabs) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            } else {
+                Text(m.tab == .ask ? "Ask Pastport" : "Your timeline").font(.headline)
             }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
             Spacer()
             if m.tab == .ask { AnswerSourceMenu(model: m).labelStyle(.iconOnly).menuStyle(.borderlessButton).fixedSize() }
             Menu {

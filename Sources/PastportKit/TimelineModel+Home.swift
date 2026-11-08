@@ -25,6 +25,12 @@ extension TimelineModel {
         return String(AttributedString(localized: "^[\(count) recent repository](inflect: true) shown, up to 20").characters)
     }
 
+    /// A bounded timeline of the history already unlocked for this session.
+    public var recentHistory: [Visit] {
+        guard historyLoaded else { return [] }
+        return Array(visits.sorted { $0.time > $1.time }.prefix(80))
+    }
+
     /// Pages in the read history whose title or address contains every word, newest first.
     public func search(_ text: String, limit: Int = 40) -> [Visit] {
         let words = text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }

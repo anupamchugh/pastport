@@ -66,6 +66,19 @@ public struct HomeView: View {
     let model: TimelineModel
     @State private var detail: HistoryFocus?
     @State private var query = HomeView.initialQuery
+    #if os(macOS)
+    @State private var selectedVisit: Visit?
+    private struct HistoryDay: Identifiable {
+        let date: Date
+        let visits: [Visit]
+        var id: Date { date }
+    }
+
+    private var recentDays: [HistoryDay] {
+        let grouped = Dictionary(grouping: model.recentHistory) { Calendar.current.startOfDay(for: $0.time) }
+        return grouped.keys.sorted(by: >).map { HistoryDay(date: $0, visits: grouped[$0] ?? []) }
+    }
+    #endif
 
     public init(model: TimelineModel) { self.model = model }
 
@@ -97,7 +110,7 @@ public struct HomeView: View {
     private var findings: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Home").font(.title2.bold())
+                Text("Find it again").font(.title2.bold())
                 Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise") { model.loadTrail() }
                     .labelStyle(.iconOnly).buttonStyle(.borderless).disabled(model.busy)
@@ -105,6 +118,12 @@ public struct HomeView: View {
             }
             HistorySearch(model: model, query: $query)
             if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                #if os(macOS)
+                if !model.recentHistory.isEmpty {
+                    recentTimeline
+                }
+                Text("Explore your history").font(.headline).padding(.top, 8)
+                #endif
                 ForEach(model.focusCards) { card in
                     Button { detail = card.focus } label: { FindingCard(card: card) }
                         .buttonStyle(.plain).disabled(model.busy)
@@ -121,6 +140,84 @@ public struct HomeView: View {
             }
         }
     }
+
+    #if os(macOS)
+    private var recentTimeline: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Recent pages").font(.headline)
+                Spacer()
+                Text("Up to 80 from your selected window").font(.caption).foregroundStyle(.secondary)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    pageList.frame(minWidth: 300, maxWidth: .infinity)
+                    pageDetail.frame(width: 280)
+                }.frame(minWidth: 640)
+                VStack(alignment: .leading, spacing: 12) {
+                    if selectedVisit != nil { pageDetail }
+                    pageList
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    private var pageList: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 2) {
+                ForEach(recentDays) { day in
+                    Text(day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+                        .font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.vertical, 6)
+                    ForEach(day.visits) { visit in
+                        Button { selectedVisit = visit } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "globe").foregroundStyle(.secondary)
+                                    .frame(width: 30, height: 30).background(.quaternary, in: Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(visit.title.isEmpty ? visit.host : visit.title).lineLimit(1).font(.callout.weight(.medium))
+                                    Text(visit.host).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Text(visit.time.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .padding(9).contentShape(Rectangle())
+                            .background(selectedVisit?.id == visit.id ? Color.accentColor.opacity(0.16) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 8))
+                        }.buttonStyle(.plain)
+                    }
+                }
+            }
+        }.frame(height: 330)
+    }
+
+    private var pageDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let visit = selectedVisit {
+                Image(systemName: "doc.text.magnifyingglass").font(.title2).foregroundStyle(.tint)
+                Text(visit.title.isEmpty ? visit.host : visit.title).font(.headline).textSelection(.enabled)
+                Text(visit.host).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                Label(visit.time.formatted(date: .abbreviated, time: .shortened), systemImage: "clock")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("This page appears in your Safari history. Its contents have not been read.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let url = URL(string: visit.cleanURL), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil, url.user == nil {
+                    Link("Open page", destination: url).buttonStyle(.borderedProminent)
+                    Text("Link parameters are removed for privacy.").font(.caption2).foregroundStyle(.secondary)
+                }
+            } else {
+                Image(systemName: "sidebar.right").font(.title2).foregroundStyle(.secondary)
+                Text("Select a page").font(.headline)
+                Text("See its details here, then choose whether to open it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16).frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+    }
+    #endif
 
     // MARK: iPhone and iPad: photos and screenshots
 

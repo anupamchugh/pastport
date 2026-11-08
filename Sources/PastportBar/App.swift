@@ -37,7 +37,7 @@ struct PastportBarApp: App {
                 .frame(minWidth: 480, minHeight: 560)
                 .preferredColorScheme(Self.screenshotScheme)
         }
-        .defaultSize(width: 520, height: 640)
+        .defaultSize(width: 1000, height: 700)
 
         // Plus the menu-bar item.
         MenuBarExtra("Pastport", systemImage: "clock.arrow.circlepath") {
