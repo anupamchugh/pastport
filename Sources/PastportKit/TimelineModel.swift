@@ -606,6 +606,9 @@ public final class TimelineModel {
                 update(turnID) {
                     $0.answer = result.text; $0.toolsUsed = result.receipt.toolCalls
                     $0.matchingSources = result.matchingSources; $0.status = .answered
+                    $0.note = result.origin == .model
+                        ? "Apple Intelligence · on-device history evidence"
+                        : "Recorded facts · Apple Intelligence answer unavailable"
                 }
             } else if let localModels, !model.isEmpty {
                 let evidence = AskWorkflow.evidence(for: AskWorkflow.intent(for: q), visits: visits)

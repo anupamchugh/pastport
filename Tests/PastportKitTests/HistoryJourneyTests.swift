@@ -4,6 +4,11 @@ import Testing
 
 @Suite("History journey policy")
 struct HistoryJourneyTests {
+    @Test("deterministic fallback is not labelled as a model answer")
+    func historyAnswerOrigin() {
+        #expect(HistoryAnswer.origin(for: "Recorded facts", deterministicAnswer: "Recorded facts") == .recordedFacts)
+        #expect(HistoryAnswer.origin(for: "A grounded summary", deterministicAnswer: "Recorded facts") == .model)
+    }
     @Test("matching source cards deduplicate and remove private URL parameters")
     func matchingSourcesAreSafeAndRecent() throws {
         let old = Date(timeIntervalSince1970: 100)

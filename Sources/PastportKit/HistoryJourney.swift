@@ -121,14 +121,24 @@ public struct HistoryPageMatch: Identifiable, Sendable, Equatable {
 }
 
 public struct HistoryAnswer: Sendable {
+    public enum Origin: Sendable, Equatable {
+        case model
+        case recordedFacts
+    }
     public let text: String
     public let receipt: JourneyReceipt
     public let matchingSources: [HistoryPageMatch]
+    public let origin: Origin
 
-    public init(text: String, receipt: JourneyReceipt, matchingSources: [HistoryPageMatch] = []) {
+    public init(text: String, receipt: JourneyReceipt, matchingSources: [HistoryPageMatch] = [], origin: Origin = .model) {
         self.text = text
         self.receipt = receipt
         self.matchingSources = matchingSources
+        self.origin = origin
+    }
+
+    static func origin(for answer: String, deterministicAnswer: String) -> Origin {
+        answer == deterministicAnswer ? .recordedFacts : .model
     }
 }
 
@@ -190,7 +200,7 @@ public actor HistoryJourney {
                 toolCalls: ["history_facts"], toolOutputCount: 1, inputTokens: nil, outputTokens: nil,
                 contextTokens: nil, contextTokenMeasurement: "none", seconds: 0,
                 usedDynamicProfile: false, didCompact: false,
-                summary: "Answered in code from the retained visits; no model was used."))
+                summary: "Answered in code from the retained visits; no model was used."), origin: .recordedFacts)
         }
         let runtime = try await runtimeForCurrentSession()
         turn += 1
@@ -730,6 +740,7 @@ private final class JourneyRuntime {
         // Every published sentence has already passed citation/count checks. Final source
         // excerpts remain visible so a model interpretation can be inspected.
         onPartial?(answerText)
+        let origin = HistoryAnswer.origin(for: answerText, deterministicAnswer: evidence.deterministicAnswer)
         return HistoryAnswer(
             text: answerText,
             receipt: await makeReceipt(
@@ -741,9 +752,10 @@ private final class JourneyRuntime {
                 didCompact: didCompact,
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
-                summary: "Answer grounded in deterministic retained-history evidence."
+                summary: origin == .model ? "Apple Intelligence answer grounded in retained-history evidence." : "Recorded facts used as a fallback; model answer unavailable."
             ),
-            matchingSources: HistoryPageMatch.matching(evidence.matches)
+            matchingSources: HistoryPageMatch.matching(evidence.matches),
+            origin: origin
         )
     }
 
