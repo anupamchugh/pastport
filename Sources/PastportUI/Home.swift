@@ -129,6 +129,7 @@ public struct HomeView: View {
                 if !model.recentHistory.isEmpty {
                     recentTimeline
                 }
+                AgentTrailSection(model: model)
                 Text("Explore your history").font(.headline).padding(.top, 8)
                 #endif
                 ForEach(model.focusCards) { card in
@@ -283,6 +284,47 @@ public struct HomeView: View {
         return first.evidence.kind == .unknown ? "Text read on this device" : first.evidence.kind.title + ", read on this device"
     }
 }
+
+#if os(macOS)
+private struct AgentTrailSection: View {
+    @Bindable var model: TimelineModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Agent Trail").font(.headline)
+            Text("Plan a few stops, then check each against your retained Safari history on this Mac.")
+                .font(.caption).foregroundStyle(.secondary)
+            if model.agentTrailRunning {
+                Button("Stop trail", systemImage: "stop.circle") { model.stopAgentTrail() }
+            } else {
+                Button(model.agentTrailStops.isEmpty ? "Build a trail" : "Build another trail", systemImage: "sparkles") {
+                    model.buildAgentTrail()
+                }.disabled(model.busy)
+            }
+            Button("Which sites do I visit regularly?") {
+                model.askSuggested("Which sites do I visit regularly?")
+            }.disabled(model.busy)
+            if !model.agentTrailStatus.isEmpty {
+                Text(model.agentTrailStatus).font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(model.agentTrailStops) { stop in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(stop.focus.title).font(.subheadline.bold())
+                    Text(stop.answer.text).font(.callout).textSelection(.enabled)
+                    Text(stop.answer.origin == .model ? "Apple Intelligence · evidence checks applied" : "Recorded facts")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(stop.answer.matchingSources) { source in
+                        HistoryPageRow(source: source)
+                    }
+                }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .padding(.vertical, 8)
+    }
+}
+#endif
 
 /// One finding: what it is, the headline fact, and one supporting line.
 struct FindingCard: View {

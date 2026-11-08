@@ -33,6 +33,13 @@ public struct AskTurn: Identifiable, Sendable, Equatable {
     }
 }
 
+/// A checked result from one stage of an in-memory Safari trail.
+public struct AgentTrailStop: Identifiable, Sendable {
+    public let focus: HistoryFocus
+    public let answer: HistoryAnswer
+    public var id: HistoryFocus { focus }
+}
+
 /// A local text model other than Apple's, such as Ollama on the Mac.
 public struct LocalModels: Sendable {
     public let list: @Sendable () async -> [String]
@@ -87,6 +94,9 @@ public final class TimelineModel {
     public internal(set) var trackerSignals: [TrackerHit] = []
     public internal(set) var historyLoaded = false
     public internal(set) var journeyReceipt: JourneyReceipt?
+    public internal(set) var agentTrailStops: [AgentTrailStop] = []
+    public internal(set) var agentTrailStatus = ""
+    public internal(set) var agentTrailRunning = false
     public let connectedAssistant = ConnectedAssistant()
 
     public internal(set) var models: [String] = []
@@ -227,6 +237,7 @@ public final class TimelineModel {
         coverage = ""; profile = ""; journeyReceipt = nil
         sites = []; trackerSignals = []; historyLoaded = false
         historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
+        agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
         trail = .overview
         let oldJourney = journey; journey = nil
         activeAnswerID = nil
@@ -439,6 +450,7 @@ public final class TimelineModel {
             defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             movements = []; threads = []; travel = []; themes = []; visits = []
             sites = []; trackerSignals = []; historyLoaded = false; turns = []; journeyReceipt = nil
+            agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
             let oldJourney = journey; journey = nil
             await oldJourney?.clear()
             guard let v = await unlockAndFetch(token: token) else { return }
@@ -500,6 +512,50 @@ public final class TimelineModel {
                 status = "\(focus.title) evidence ready. Suggestions could not be generated."
             }
         }
+    }
+
+    /// Plans and executes a bounded sequence against this unlocked snapshot.
+    public func buildAgentTrail() {
+        guard historyLoaded, !visits.isEmpty, !busy else { return }
+        let token = generation, owner = UUID()
+        operationID = owner; busy = true; agentTrailRunning = true
+        agentTrailStops = []; agentTrailStatus = "Planning a trail…"
+        operation = Task { @MainActor in
+            defer {
+                if token == generation, operationID == owner {
+                    busy = false; agentTrailRunning = false; operationID = nil; operation = nil
+                }
+            }
+            let session = journey ?? HistoryJourney(visits: visits, scope: coverage)
+            journey = session
+            do {
+                let plan = try await session.recommend("Plan a few distinct evidence trails to revisit.")
+                guard token == generation, operationID == owner, !Task.isCancelled else { return }
+                let focuses = Array(plan.focuses.filter { availableFocuses.contains($0) }.prefix(3))
+                guard !focuses.isEmpty else { agentTrailStatus = "No supported trail was found in this window."; return }
+                let planner = plan.usedModel ? "Apple Intelligence planned" : "Recorded evidence selected"
+                for focus in focuses {
+                    agentTrailStatus = "\(planner) \(focuses.count) stops · checking \(focus.title.lowercased())…"
+                    let question = questions(for: focus).first ?? "Summarize retained history."
+                    let answer = try await session.answer(question, focus: focus)
+                    guard token == generation, operationID == owner, !Task.isCancelled else { return }
+                    agentTrailStops.append(AgentTrailStop(focus: focus, answer: answer))
+                }
+                agentTrailStatus = "\(planner) \(agentTrailStops.count) stops · review the source evidence."
+            } catch {
+                guard token == generation, operationID == owner, !Task.isCancelled else { return }
+                agentTrailStatus = "The trail could not finish. Completed stops remain available."
+            }
+        }
+    }
+
+    public func stopAgentTrail() {
+        guard agentTrailRunning else { return }
+        operation?.cancel(); operation = nil; operationID = nil
+        busy = false; agentTrailRunning = false
+        agentTrailStatus = "Stopped. Completed stops remain available."
+        let oldJourney = journey; journey = nil
+        Task { await oldJourney?.clear() }
     }
 
     /// A private thread asks every time; the session-wide unlock is not enough for it.

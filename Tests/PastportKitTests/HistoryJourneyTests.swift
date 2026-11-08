@@ -4,6 +4,14 @@ import Testing
 
 @Suite("History journey policy")
 struct HistoryJourneyTests {
+    @Test("trail planning rejects unsupported and duplicate stages")
+    func trailPlanUsesOnlySupportedDistinctFocuses() {
+        let stages = JourneyPlanner.validatedFocuses(
+            ["research", "places", "research", "travel", "overview", "privacy"],
+            supported: [.overview, .research, .travel]
+        )
+        #expect(stages == [.research, .travel, .overview])
+    }
     @Test("a site trail matches the exact host, not a URL mentioning it")
     func siteTrailUsesExactHost() {
         let visits = [
@@ -89,6 +97,8 @@ struct HistoryJourneyTests {
         #expect(!HistoryJourneyValidation.allowsNarrative("There were 126828 visits.", evidenceLines: ["visits: 126,882 retained visits"]))
         #expect(HistoryJourneyValidation.allowsNarrative("There were 126,882 visits.", evidenceLines: ["visits: 126882 retained visits"]))
         #expect(HistoryJourneyValidation.allowsNarrative("A history page does not confirm a purchase.", evidenceLines: packet))
+        #expect(HistoryJourneyValidation.renderSection("The trip was booked.", evidenceLines: packet, includeSources: true) == nil,
+                "Rejected model text must not become a standalone source line that hides the deterministic fallback")
     }
 
     @Test("a missing named topic cannot fall back to unrelated travel or site facts")
@@ -120,6 +130,9 @@ struct HistoryJourneyTests {
         let exposed = JourneyEvidence.make(visits: visits, question: "Is my location exposed anywhere in my history?", focus: nil)
         #expect(!exposed.hasUnmatchedSearch)
         #expect(exposed.evidenceLines.contains { $0.hasPrefix("location-bearing URLs:") })
+        let places = JourneyEvidence.make(visits: visits, question: "Which map links contain a named place, and when?", focus: .places)
+        #expect(!places.hasUnmatchedSearch)
+        #expect(places.evidenceLines.contains { $0.hasPrefix("location-bearing URLs:") })
         let missing = JourneyEvidence.make(visits: visits, question: "What was I knitting?", focus: nil)
         #expect(missing.hasUnmatchedSearch, "a real topic with no matching page still gets only absence evidence")
     }

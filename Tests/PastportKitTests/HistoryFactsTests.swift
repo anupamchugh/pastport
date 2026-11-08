@@ -33,6 +33,14 @@ struct HistoryFactsTests {
         #expect(text?.contains("shop.example") == false)
     }
 
+    @Test func regularSitesCountDistinctDaysRatherThanReloads() {
+        let sample = [visit(-1, "daily.example"), visit(-1, "daily.example"), visit(-3, "daily.example"),
+                      visit(-1, "reload.example"), visit(-1, "reload.example"), visit(-1, "reload.example")]
+        let text = HistoryFacts.answer(question: "Which sites do I visit regularly?", visits: sample, now: now)?.text
+        #expect(text?.contains("daily.example (2 days)") == true)
+        #expect(text?.contains("reload.example") == false)
+    }
+
     @Test func tiesBreakAlphabeticallySoTheAnswerIsStable() {
         let tie = [visit(-1, "b.example"), visit(-1, "a.example")]
         let text = HistoryFacts.answer(question: "top 2 sites", visits: tie, now: now)?.text

@@ -34,6 +34,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.anupamchugh.Pastport
+        MARKETING_VERSION: "1.4.0"
+        CURRENT_PROJECT_VERSION: "11"
         PRODUCT_NAME: Pastport
         GENERATE_INFOPLIST_FILE: "YES"
         # Menu-bar utility that reads Safari history via Full Disk Access — must NOT

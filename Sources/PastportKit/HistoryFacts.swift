@@ -31,6 +31,8 @@ public enum HistoryFacts {
         let label = windowLabel(scope)
 
         switch kind {
+        case .regularSites:
+            return regularSites(window, label: label, scope: scope)
         case .topSites(let limit):
             return topSites(window, limit: limit, label: label, scope: scope)
         case .visitCount:
@@ -57,6 +59,7 @@ public enum HistoryFacts {
     // MARK: classification
 
     enum Kind: Equatable {
+        case regularSites
         case topSites(Int)
         case visitCount
         case lastVisit(String)
@@ -94,6 +97,11 @@ public enum HistoryFacts {
 
         if has(#"\b(?:which|what)\s+places?\b"#) || has(#"\bwhat\s+places\b"#) || has(#"\bplaces\s+(?:appear|show|are|in)\b"#) { return .places }
 
+        if has(#"\b(?:site|sites|website|websites|domain|domains)\b"#)
+            && has(#"\b(?:regularly|regular|repeatedly|recurring|frequently|often)\b"#) {
+            return .regularSites
+        }
+
         if has(#"\btop\s+(?:\d+|one|two|three|four|five|ten)\b"#) || has(#"\bmost\s+(?:visited|often|used|opened)\b"#)
             || has(#"\b(?:visit|visited|open|opened|use|used)\b.*\bmost\b"#) || has(#"\btop\s+(?:site|sites|website|websites)\b"#) {
             guard has(#"\b(?:site|sites|website|websites|domain|domains|page|pages)\b"#) else { return nil }
@@ -102,6 +110,25 @@ public enum HistoryFacts {
 
         if has(#"\bhow\s+many\b.*\b(?:visit|visits|visited|page|pages|site|sites|link|links|time|times|tab|tabs)\b"#) { return .visitCount }
         return nil
+    }
+
+    private static func regularSites(_ visits: [Visit], label: String, scope: HistoryQuestionScope) -> DirectAnswer {
+        let calendar = Calendar.current
+        var days: [String: Set<Date>] = [:]
+        for visit in visits where !visit.host.isEmpty {
+            days[visit.host, default: []].insert(calendar.startOfDay(for: visit.time))
+        }
+        let ranked = days.filter { $0.value.count >= 2 }.sorted {
+            $0.value.count == $1.value.count ? $0.key < $1.key : $0.value.count > $1.value.count
+        }.prefix(5)
+        let text: String
+        if ranked.isEmpty {
+            text = "No site appears on at least two separate days \(inLabel(label))."
+        } else {
+            let sites = ranked.map { "\($0.key) (\($0.value.count) days)" }.joined(separator: ", ")
+            text = "Sites appearing on at least two separate days \(inLabel(label)): \(sites). This is recorded browsing, not time spent or a personal trait."
+        }
+        return DirectAnswer(text: text, kind: "regular-sites", scope: scope.rangeDescription)
     }
 
     static func topLimit(in q: String) -> Int {

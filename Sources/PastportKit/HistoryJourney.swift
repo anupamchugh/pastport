@@ -82,11 +82,13 @@ public struct JourneyRecommendation: Sendable {
     public let focuses: [HistoryFocus]
     public let suggestedQuestions: [String]
     public let receipt: JourneyReceipt
+    public let usedModel: Bool
 
-    public init(focuses: [HistoryFocus], suggestedQuestions: [String], receipt: JourneyReceipt) {
+    public init(focuses: [HistoryFocus], suggestedQuestions: [String], receipt: JourneyReceipt, usedModel: Bool = false) {
         self.focuses = focuses
         self.suggestedQuestions = suggestedQuestions
         self.receipt = receipt
+        self.usedModel = usedModel
     }
 }
 
@@ -360,7 +362,7 @@ struct JourneyEvidence: @unchecked Sendable {
         let queryWords: Set<String> = [
             "research", "threads", "thread", "topics", "topic", "queries", "query", "search", "searches", "repeated", "recurring", "original",
             "travel", "related", "booking", "bookings", "hotel", "hotels", "flight", "flights", "trip", "trips", "checkout", "confirmation", "itinerary",
-            "tracking", "patterns", "privacy", "location", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
+            "tracking", "patterns", "privacy", "location", "place", "places", "retained", "window", "overview", "signals", "signal", "source", "evidence", "recorded",
             "exact", "count", "counts", "dates", "days", "last", "only", "show", "give", "tell", "more", "narrow", "appear", "separate", "visits", "visit", "page", "does", "prove", "remains", "unknown", "without", "assuming", "named", "contain", "parameters", "redirect", "these", "most", "leading", "all", "entire", "full", "matching",
             "researching", "researched", "looking", "looked", "trying", "browsing", "browsed", "reading", "visited", "opened", "pages", "sites", "site", "week", "weeks", "month", "months", "today", "yesterday", "recently", "lately", "history", "about",
             "anywhere", "anything", "something", "everything", "exposed", "exposes", "exposure"
@@ -433,7 +435,7 @@ struct JourneyEvidence: @unchecked Sendable {
     }
 }
 
-private enum JourneyPlanner {
+enum JourneyPlanner {
     static func fallbackQuestions(for evidence: JourneyEvidence) -> [String] {
         var questions: [String] = []
         if evidence.supportedFocuses.contains(.research) { questions.append("What was I researching, in my own search terms?") }
@@ -455,6 +457,13 @@ private enum JourneyPlanner {
 /// Pure policy helpers kept separate so fixture tests can exercise grounding and context
 /// decisions without starting Apple Intelligence.
 enum HistoryJourneyValidation {
+    static func renderSection(_ text: String, evidenceLines: [String], includeSources: Bool) -> String? {
+        let candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !evidenceLines.isEmpty,
+              allowsNarrative(candidate, evidenceLines: evidenceLines) else { return nil }
+        return candidate + (includeSources ? "\nSource evidence: " + evidenceLines.joined(separator: " ") : "")
+    }
+
     static func supportedFocuses(
         hasResearch: Bool,
         hasBookings: Bool,
@@ -534,9 +543,15 @@ private enum JourneyFocusValue: String, Codable {
 }
 
 @Generable
+private struct JourneyPlanStep {
+    @Guide(description: "A focus supported by the evidence packet.")
+    var focus: JourneyFocusValue
+}
+
+@Generable
 private struct JourneyRecommendationPayload {
-    @Guide(description: "Use only focus values supported by the evidence.")
-    var focuses: [JourneyFocusValue]
+    @Guide(description: "Choose up to three distinct evidence-supported trail steps.", .count(1...3))
+    var steps: [JourneyPlanStep]
     @Guide(description: "Concise follow-up questions grounded in the evidence packet. Do not invent facts.", .count(0...3))
     var suggestedQuestions: [String]
 }
@@ -649,6 +664,7 @@ private final class JourneyRuntime {
         var inputTokens: Int?
         var outputTokens: Int?
         var modelStatus = "typed model recommendation used"
+        var usedModel = false
 
         let request = JourneyPrompts.recommendation(prompt: prompt, evidence: evidence)
         do {
@@ -659,10 +675,11 @@ private final class JourneyRuntime {
             inputTokens = usage?.input
             outputTokens = usage?.output
             let candidate = JourneyPlanner.validatedFocuses(
-                response.content.focuses.map(\.rawValue),
+                response.content.steps.map { $0.focus.rawValue },
                 supported: evidence.supportedFocuses
             )
             if !candidate.isEmpty { selected = candidate }
+            usedModel = !candidate.isEmpty
             let candidateQuestions = response.content.suggestedQuestions
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
@@ -687,7 +704,8 @@ private final class JourneyRuntime {
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 summary: "Selected \(selected.map(\.rawValue).joined(separator: ", ")) from retained evidence; \(modelStatus)."
-            )
+            ),
+            usedModel: usedModel
         )
     }
 
@@ -878,13 +896,7 @@ private final class JourneyRuntime {
         let lines = labels.prefix(3).compactMap { label in
             evidence.evidenceLines.first { $0.hasPrefix(label.rawValue + ":") }
         }
-        guard !lines.isEmpty else { return nil }
-        let candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !candidate.isEmpty else { return nil }
-        if !HistoryJourneyValidation.allowsNarrative(candidate, evidenceLines: lines) {
-            return includeSources ? lines.joined(separator: "\n") : nil
-        }
-        return candidate + (includeSources ? "\nSource evidence: " + lines.joined(separator: " ") : "")
+        return HistoryJourneyValidation.renderSection(text, evidenceLines: lines, includeSources: includeSources)
     }
 
     private func prepareEvidence(question: String, focus: HistoryFocus?, matchingRequested: Bool = true) async throws -> JourneyEvidence {
@@ -1197,7 +1209,7 @@ private enum JourneyPrompts {
     static func recommendation(prompt: String, evidence: JourneyEvidence) -> String {
         let boundedPrompt = String(prompt.prefix(1_000))
         return """
-        Recommend a small next step for this retained Safari-history snapshot. Return only the requested typed fields. Select focus values only when their evidence exists. Ask no more than three useful questions. Do not make up facts.
+        Plan up to three distinct trail steps for this retained Safari-history snapshot. Return only the requested typed fields. Select focus values only when their evidence exists. Ask no more than three useful questions. Do not make up facts.
         PERSON'S REQUEST: \(boundedPrompt)
         SUPPORTED FOCUSES: \(evidence.supportedFocuses.map(\.rawValue).joined(separator: ", "))
         EVIDENCE:
