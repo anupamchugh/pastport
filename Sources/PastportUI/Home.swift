@@ -211,6 +211,10 @@ public struct HomeView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 if let source = HistoryPageMatch.matching([visit]).first {
                     HistoryPageRow(source: source)
+                    Button("Find more pages from this site", systemImage: "sparkles") {
+                        model.askSuggested("Which pages did I visit on \(visit.host)?")
+                    }
+                    .disabled(model.busy)
                 }
             } else {
                 Image(systemName: "sidebar.right").font(.title2).foregroundStyle(.secondary)

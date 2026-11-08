@@ -365,13 +365,20 @@ struct JourneyEvidence: @unchecked Sendable {
             "researching", "researched", "looking", "looked", "trying", "browsing", "browsed", "reading", "visited", "opened", "pages", "sites", "site", "week", "weeks", "month", "months", "today", "yesterday", "recently", "lately", "history", "about",
             "anywhere", "anything", "something", "everything", "exposed", "exposes", "exposure"
         ]
-        let keywords = broadOverview || !matchingRequested ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4))
+        let sitePrefix = "which pages did i visit on "
+        let requestedHost: String? = {
+            guard matchingRequested, wording.hasPrefix(sitePrefix), wording.hasSuffix("?") else { return nil }
+            let host = String(wording.dropFirst(sitePrefix.count).dropLast()).trimmingCharacters(in: .whitespaces)
+            guard !host.isEmpty, visits.contains(where: { $0.host.lowercased() == host }) else { return nil }
+            return host
+        }()
+        let keywords = requestedHost.map { [$0] } ?? (broadOverview || !matchingRequested ? [] : Array(keywordsFrom(question, max: 32).filter { !queryWords.contains($0) }.prefix(4)))
         // "shopping" should find shop.example: match each word and its -ing stem.
         let patterns = keywords.flatMap { word in [word] + (Self.gerundStem(word).map { [$0] } ?? []) }
         var matches: [Visit] = []
         if !keywords.isEmpty {
             for visit in visits {
-                if patterns.contains(where: { visit.title.localizedCaseInsensitiveContains($0) || visit.url.localizedCaseInsensitiveContains($0) }) {
+                if requestedHost.map({ visit.host.lowercased() == $0 }) ?? patterns.contains(where: { visit.title.localizedCaseInsensitiveContains($0) || visit.url.localizedCaseInsensitiveContains($0) }) {
                     matches.append(visit)
                     if matches.count == 24 { break }
                 }

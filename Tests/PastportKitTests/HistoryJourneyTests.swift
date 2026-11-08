@@ -4,6 +4,16 @@ import Testing
 
 @Suite("History journey policy")
 struct HistoryJourneyTests {
+    @Test("a site trail matches the exact host, not a URL mentioning it")
+    func siteTrailUsesExactHost() {
+        let visits = [
+            Visit(time: .now, title: "One", url: "https://example.com/one"),
+            Visit(time: .now, title: "Other", url: "https://other.com/?next=example.com"),
+            Visit(time: .now, title: "Subdomain", url: "https://news.example.com/one")
+        ]
+        let evidence = JourneyEvidence.make(visits: visits, question: "Which pages did I visit on example.com?", focus: nil)
+        #expect(evidence.matches.map(\.title) == ["One"])
+    }
     @Test("deterministic fallback is not labelled as a model answer")
     func historyAnswerOrigin() {
         #expect(HistoryAnswer.origin(for: "Recorded facts", deterministicAnswer: "Recorded facts") == .recordedFacts)
