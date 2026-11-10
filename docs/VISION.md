@@ -73,10 +73,10 @@ Gap: `DESIGN.md` lists fixed-width icon and label columns that have not been che
 
 ## Concepts (not built)
 
-These live outside this repo and are linked, not copied. None of them is evidence that a feature exists.
+The prototypes live outside this repository, in the owner's design files, and are not copied here. None of them is evidence that a feature exists.
 
-- `/Users/anupamchugh/Desktop/workspace/design-assets/prototypes/pastport-iphone-prototype.pdf`: concept, not built as drawn. The Claude iPhone prototype (21 Oct, sample data) behind the 2.0 spec. The Face ID error banner, redaction bars and Privacy approval card were mock-ups; the Timeline trails, evidence cards and Privacy screen it led to have since been built, in different forms (see the screenshots above).
-- `/Users/anupamchugh/Desktop/workspace/_notes/prototype-vs-reality-2026-10-25/img/pastport-proto-timeline.webp`: concept, not built as drawn. The prototype's Timeline screen.
-- `/Users/anupamchugh/Desktop/workspace/_notes/prototype-vs-reality-2026-10-25/img/pastport-proto-ask.webp`: concept, not built as drawn. The prototype's Ask screen.
+- iPhone prototype PDF (`pastport-iphone-prototype.pdf`): concept, not built as drawn. The Claude iPhone prototype (21 Oct, sample data) behind the 2.0 spec. The Face ID error banner, redaction bars and Privacy approval card were mock-ups; the Timeline trails, evidence cards and Privacy screen it led to have since been built, in different forms (see the screenshots above).
+- Prototype Timeline image (`pastport-proto-timeline.webp`, from the 25 Oct prototype-versus-reality notes): concept, not built as drawn. The prototype's Timeline screen.
+- Prototype Ask image (`pastport-proto-ask.webp`, same notes): concept, not built as drawn. The prototype's Ask screen.
 - Ideas in `docs/intelligence-directions.md`, none implemented: a return ticket, regular stops, a research itinerary, then and now, a source passport, private bookmarks, visual recall, Visual Intelligence search and a Codex companion over MCP (`pastport-7t3`). Each must define storage, lock behaviour and redaction first.
 - Not built: Safari history import on iPhone (`docs/specs/2026-11-04-safari-history-import.md`, bead `pastport-4m8`), iCloud sync, widgets, Apple Watch.

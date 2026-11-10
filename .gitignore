@@ -3,3 +3,7 @@
 *.xcodeproj
 .DS_Store
 build/
+
+# Beads ledger (local only)
+.beads/
+.beads.gate.lock
