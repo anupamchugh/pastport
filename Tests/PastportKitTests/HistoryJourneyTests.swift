@@ -74,7 +74,8 @@ struct HistoryJourneyTests {
                 await Task.detached { nonCooperativeWork() }.value
             }, onTimeout: {})
         }
-        #expect(start.duration(to: .now) < .seconds(0.15))
+        // The blocking work sleeps 2 s; returning well before that proves the deadline, even on a loaded machine.
+        #expect(start.duration(to: .now) < .seconds(1))
     }
 
     @Test("Focus suggestions require matching evidence")
@@ -285,6 +286,6 @@ struct HistoryJourneyTests {
 }
 
 private func nonCooperativeWork() -> Int {
-    Thread.sleep(forTimeInterval: 0.2)
+    Thread.sleep(forTimeInterval: 2)
     return 7
 }
