@@ -12,6 +12,7 @@ struct BarView: View {
     @State private var exporting = false
     @State private var exportDocument: ExperimentDocument?
     @State private var showingAlfred = false
+    @State private var showingCodex = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -25,7 +26,9 @@ struct BarView: View {
                     Divider()
                     SessionStatus(model: m).padding(.horizontal, 16).padding(.top, 8)
                     Group {
-                        if showingAlfred {
+                        if showingCodex {
+                            CodexConnectionView(model: m)
+                        } else if showingAlfred {
                             AlfredReferencesView(model: m)
                         } else { switch m.tab {
                         case .trail, .add, .privacy:
@@ -50,7 +53,7 @@ struct BarView: View {
             defaultFilename: "Pastport-experiment.json"
         ) { m.exportFinished($0); exportDocument = nil }
         // A lock while the save panel is open cancels the export.
-        .onChange(of: m.contentID) { exporting = false; exportDocument = nil; showingAlfred = false }
+        .onChange(of: m.contentID) { exporting = false; exportDocument = nil; showingAlfred = false; showingCodex = false }
     }
 
     private var sidebar: some View {
@@ -59,11 +62,18 @@ struct BarView: View {
                 .font(.headline).padding(.horizontal, 10).padding(.bottom, 18)
             sidebarButton("Timeline", symbol: "clock", tab: .trail)
             sidebarButton("Ask", symbol: "bubble.left.and.text.bubble.right", tab: .ask)
-            Button { showingAlfred = true } label: {
+            Button { showingAlfred = true; showingCodex = false } label: {
                 Label("Alfred", systemImage: "link")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 10).padding(.vertical, 8)
                     .background(showingAlfred ? Color.accentColor.opacity(0.2) : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 8))
+            }.buttonStyle(.plain)
+            Button { showingCodex = true; showingAlfred = false } label: {
+                Label("Codex", systemImage: "terminal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(showingCodex ? Color.accentColor.opacity(0.2) : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 8))
             }.buttonStyle(.plain)
             Spacer()
@@ -76,11 +86,11 @@ struct BarView: View {
     }
 
     private func sidebarButton(_ title: String, symbol: String, tab: TimelineModel.Tab) -> some View {
-        Button { showingAlfred = false; m.tab = tab } label: {
+        Button { showingAlfred = false; showingCodex = false; m.tab = tab } label: {
             Label(title, systemImage: symbol)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(!showingAlfred && m.tab == tab ? Color.accentColor.opacity(0.2) : Color.clear,
+                .background(!showingAlfred && !showingCodex && m.tab == tab ? Color.accentColor.opacity(0.2) : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8))
         }.buttonStyle(.plain)
     }
@@ -88,12 +98,14 @@ struct BarView: View {
     private func header(showTabs: Bool) -> some View {
         HStack(spacing: 12) {
             if showTabs {
-                Button("Timeline") { showingAlfred = false; m.tab = .trail }
-                Button("Ask") { showingAlfred = false; m.tab = .ask }
-                Button("Alfred") { showingAlfred = true }
+                Button("Timeline") { showingAlfred = false; showingCodex = false; m.tab = .trail }
+                Button("Ask") { showingAlfred = false; showingCodex = false; m.tab = .ask }
+                Button("Alfred") { showingAlfred = true; showingCodex = false }
                     .accessibilityLabel("Alfred references")
+                Button("Codex") { showingCodex = true; showingAlfred = false }
+                    .accessibilityLabel("Codex connection")
             } else {
-                Text(showingAlfred ? "Alfred" : (m.tab == .ask ? "Ask Pastport" : "Your timeline")).font(.headline)
+                Text(showingCodex ? "Codex" : showingAlfred ? "Alfred" : (m.tab == .ask ? "Ask Pastport" : "Your timeline")).font(.headline)
             }
             Spacer()
             if m.tab == .ask && !showingAlfred { AnswerSourceMenu(model: m).labelStyle(.iconOnly).menuStyle(.borderlessButton).fixedSize() }

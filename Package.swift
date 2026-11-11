@@ -44,7 +44,7 @@ let package = Package(
             dependencies: ["PastportKit"]
         ),
         .testTarget(name: "PastportEvalTests", dependencies: ["PastportEval", "PastportKit"]),
-        .testTarget(name: "PastportMacTests", dependencies: ["PastportMac"]),
+        .testTarget(name: "PastportMacTests", dependencies: ["PastportMac", "PastportKit"]),
     ],
     swiftLanguageModes: [.v5]
 )

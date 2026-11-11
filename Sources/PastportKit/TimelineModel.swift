@@ -98,6 +98,8 @@ public final class TimelineModel {
     public internal(set) var agentTrailStatus = ""
     public internal(set) var agentTrailRunning = false
     public let connectedAssistant = ConnectedAssistant()
+    /// The opt-in Codex connection (Mac). Off at every launch; every lock ends its approvals.
+    public let codex = McpConnection()
 
     public internal(set) var models: [String] = []
     public var model = ""
@@ -194,6 +196,14 @@ public final class TimelineModel {
         self.timelineAnswerer = timelineAnswerer
         self.localModels = localModels
         self.appleIntelligenceReady = appleIntelligenceReady
+        codex.attach { [weak self] in self?.mcpHistoryView }
+    }
+
+    /// What a connected coding agent may be shown, once the person approves: only the unlocked, retained
+    /// history this session already read. Nil while locked or before a read.
+    var mcpHistoryView: McpHistoryView? {
+        guard !isLocked, historyLoaded, importedHistory == nil, !visits.isEmpty else { return nil }
+        return McpHistoryView(visits: visits, windowDescription: "\(windowTitle) · \(visits.count) pages")
     }
 
     public var usingApple: Bool { model == Self.appleModelName }
@@ -246,6 +256,7 @@ public final class TimelineModel {
         generation = UUID()
         operation?.cancel(); operation = nil; operationID = nil
         unlocked = false; busy = false; isLocked = true
+        codex.revoke()
         importedHistory?.clear(); importedHistoryActive = false; importStatus = ""
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; screenshots = []; turns = []; input = ""; pendingQuestion = nil
@@ -514,7 +525,8 @@ public final class TimelineModel {
         let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
             defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
-                movements = []; threads = []; travel = []; themes = []; visits = []
+            codex.revoke()
+            movements = []; threads = []; travel = []; themes = []; visits = []
             sites = []; trackerSignals = []; historyLoaded = false; turns = []; journeyReceipt = nil
             agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
             let oldJourney = journey; journey = nil

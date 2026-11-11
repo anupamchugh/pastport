@@ -26,6 +26,7 @@ COMMANDS
   trackers          outbound interstitials / redirects / UTM (deterministic)  [SQL only]
   bookings          confirmations, itineraries, receipts you actually made    [SQL only]
   photos            photo bursts and scene labels from local Photos            [Photos]
+  mcp               stdio bridge for Codex to the Pastport app (the app asks you first)
   ask-eval          score the app's Ask on a fictional history (on-device model)
   help              show this help
 
@@ -99,6 +100,9 @@ func fail(_ message: String) -> Never {
 
 func useApple() -> Bool { model.lowercased().hasPrefix("apple") || model.lowercased() == "foundation" }
 func modelName() -> String { useApple() ? AppleFoundation.displayName : model }
+
+// `mcp` reads no history: the Pastport app answers, after the person approves each request there.
+if command == "mcp" { McpBridge.run() }
 
 // ---- Step 0: biometric gate (reuses a recent unlock within --grace minutes) ----
 if relock { SessionLock.relock() }

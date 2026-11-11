@@ -52,18 +52,7 @@ public struct IntentThread: Identifiable, Finding {
     /// package: it protects the person rather than classifying the world, it is short, and
     /// it is meant to be edited by whoever disagrees with it.
     public var isSensitive: Bool {
-        let markers = [
-            // health
-            "chair", "assistance", "fracture", "symptom", "diagnos", "clinic", "doctor",
-            "therapy", "medication", "disorder", "cancer", "pregnan", "abortion", "mental",
-            "disabilit", "surgery", "prescription",
-            // intimate
-            "porn", "nsfw", "escort", "sexual",
-            // distress
-            "lawyer", "arrest", "bail", "debt", "bankrupt", "divorce", "custody",
-        ]
-        let haystack = ([term] + related + queries).joined(separator: " ").lowercased()
-        return markers.contains { haystack.contains($0) }
+        SensitiveTopics.matches(([term] + related + queries).joined(separator: " "))
     }
 
     /// One line for the monthly digest. Lives here so the CLI and the app can't drift.
@@ -267,5 +256,28 @@ public enum Threads {
         \(steer)
         \(thread.promptLines)
         """
+    }
+}
+
+/// Topics that should not be rendered, or handed to another program, without the person asking.
+///
+/// This list is a deliberate exception to the no-word-lists rule elsewhere in the package: it protects
+/// the person rather than classifying the world, it is short, and it is meant to be edited by whoever
+/// disagrees with it.
+public enum SensitiveTopics {
+    static let markers = [
+        // health
+        "chair", "assistance", "fracture", "symptom", "diagnos", "clinic", "doctor",
+        "therapy", "medication", "disorder", "cancer", "pregnan", "abortion", "mental",
+        "disabilit", "surgery", "prescription",
+        // intimate
+        "porn", "nsfw", "escort", "sexual",
+        // distress
+        "lawyer", "arrest", "bail", "debt", "bankrupt", "divorce", "custody",
+    ]
+
+    public static func matches(_ text: String) -> Bool {
+        let haystack = text.lowercased()
+        return markers.contains { haystack.contains($0) }
     }
 }

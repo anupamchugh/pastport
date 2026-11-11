@@ -26,8 +26,12 @@ struct PastportBarApp: App {
         if arguments.contains("--ask") { model.openAskForScreenshots() }
         if arguments.contains("--ask-empty") { model.start(); model.tab = .ask }
         #endif
-        // Screen lock clears cached history, photo activity and answers.
+        // Screen lock clears cached history, photo activity and answers, and ends every Codex approval.
         ScreenLock.onLock { model.lockAndClear() }
+        let server = McpSocketServer(broker: model.codex.broker)
+        model.codex.serveControl = { on in if on { try server.start() } else { server.stop() } }
+        model.codex.onRequest = { NSApp.activate(ignoringOtherApps: true) }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in server.stop() }
     }
 
     var body: some Scene {
