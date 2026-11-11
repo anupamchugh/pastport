@@ -126,10 +126,19 @@ public final class TimelineModel {
     /// True from launch and after every lock. `unlock()` clears it once a photo read pass ends.
     public internal(set) var isLocked = true
 
-    /// False on iPhone and iPad, where iOS does not let apps read Safari history.
-    public var canReadHistory: Bool { history != nil }
+    /// False on iPhone and iPad until the person imports a Safari export: iOS does not let apps read
+    /// Safari history, so the only source there is a ZIP they chose.
+    public var canReadHistory: Bool { history != nil || importedHistoryActive }
+    /// True where a Safari export can be chosen (iPhone and iPad).
+    public var canImportHistory: Bool { importedHistory != nil }
+    /// True from a successful import until the next lock. Observed: copy and cards depend on it.
+    public internal(set) var importedHistoryActive = false
+    /// The last import's outcome in plain words, shown beside the import button. Never names a file.
+    public internal(set) var importStatus = ""
 
     @ObservationIgnored private let history: (any HistorySource)?
+    @ObservationIgnored let importedHistory: ImportedHistorySource?
+    private var activeHistory: (any HistorySource)? { history ?? (importedHistoryActive ? importedHistory : nil) }
     @ObservationIgnored private let photos: any PhotoLibraryReading
     @ObservationIgnored private let screenshotReader: ScreenshotReader
     @ObservationIgnored private let authenticator: any Authenticating
@@ -148,7 +157,7 @@ public final class TimelineModel {
     /// Observed: the composer swaps Send for Stop on `isAnswering`.
     private var activeAnswerID: UUID?
     @ObservationIgnored private var started = false
-    @ObservationIgnored private var unlocked = false
+    @ObservationIgnored var unlocked = false
     /// Observed: `canExport` reads it.
     var visits: [Visit] = []
 
@@ -156,6 +165,9 @@ public final class TimelineModel {
     /// on device for scene labels; only screenshots are counted without being read.
     public static let photoCopy = "Photos are checked on this iPhone for scene labels, such as beach or food. Nothing leaves the device and no photo is kept. Screenshots are counted only. Photos stored only in iCloud are skipped."
     public static let safariCopy = "iOS does not let apps read Safari history, so Pastport does not."
+    public static let importedSafariCopy = "Safari history is available only from an export you chose. It stays in memory on this device and is cleared when you lock or leave."
+    /// What iOS can read of Safari: nothing directly, or only the export the person chose.
+    public var safariLine: String { importedHistoryActive ? Self.importedSafariCopy : Self.safariCopy }
     public static let offlineCopy = "Offline is fine. Timeline, Ask and screenshots run on this iPhone. Only Connected tools need a connection."
     public static let noTextFound = "No text found. Try a clearer screenshot."
     public static let unlockFailed = "Could not unlock. Nothing was read."
@@ -165,6 +177,7 @@ public final class TimelineModel {
 
     public init(
         history: (any HistorySource)?,
+        importedHistory: ImportedHistorySource? = nil,
         photos: any PhotoLibraryReading = PhotoLibraryProvider(),
         screenshotReader: ScreenshotReader = ScreenshotReader(),
         authenticator: any Authenticating = DeviceAuthenticator(),
@@ -174,6 +187,7 @@ public final class TimelineModel {
         days: Int = 90) {
         self.days = days
         self.history = history
+        self.importedHistory = importedHistory
         self.photos = photos
         self.screenshotReader = screenshotReader
         self.authenticator = authenticator
@@ -232,6 +246,7 @@ public final class TimelineModel {
         generation = UUID()
         operation?.cancel(); operation = nil; operationID = nil
         unlocked = false; busy = false; isLocked = true
+        importedHistory?.clear(); importedHistoryActive = false; importStatus = ""
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; screenshots = []; turns = []; input = ""; pendingQuestion = nil
         coverage = ""; profile = ""; journeyReceipt = nil
@@ -298,6 +313,57 @@ public final class TimelineModel {
             }
         }
     }
+
+    // MARK: Safari export (iPhone and iPad)
+
+    /// Reads a Safari export ZIP the person chose. Face ID comes first and the file is opened only after it
+    /// succeeds. A failure leaves what was on screen as it was and says why in `importStatus`; a success keeps the
+    /// scrubbed visits in memory until the next lock.
+    public func importSafariExport(from url: URL) {
+        guard let importedHistory, !busy else { return }
+        let token = generation
+        busy = true
+        let owner = UUID(); operationID = owner
+        importStatus = ""
+        operation = Task { @MainActor in
+            var imported = false
+            defer {
+                if token == generation, operationID == owner {
+                    busy = false; operationID = nil
+                    if imported { loadTrail() }
+                }
+            }
+            status = "Waiting for Face ID…"
+            let result = await authenticator.unlock(reason: "import your Safari history export", graceMinutes: 0)
+            guard token == generation, !Task.isCancelled else { authenticator.relock(); return }
+            guard result == .unlocked else { importStatus = Self.unlockFailed; return }
+            status = "Reading the export on this device…"
+            let outcome: Result<SafariExportResult, SafariExportError> = await Task.detached {
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                do { return .success(try SafariExport.read(from: url)) } catch let error as SafariExportError {
+                    return .failure(error)
+                } catch { return .failure(.notAnArchive) }
+            }.value
+            guard token == generation, !Task.isCancelled else { return }
+            switch outcome {
+            case .failure(let error):
+                importStatus = error.description
+            case .success(let export):
+                importedHistory.load(export)
+                importedHistoryActive = true
+                unlocked = true; isLocked = false
+                importStatus = "Imported. This stays in memory on this device until you lock or leave Pastport."
+                imported = true
+            }
+        }
+    }
+
+    /// The import was cancelled in the file picker; nothing was read.
+    public func importCancelled() { importStatus = SafariExportError.cancelled.description }
+
+    /// The file picker could not hand over a file.
+    public func importFailed() { importStatus = SafariExportError.notAnArchive.description }
 
     /// After a successful unlock, asks the question Siri handed over. A failed unlock keeps it waiting.
     private func askPendingQuestion() {
@@ -366,7 +432,7 @@ public final class TimelineModel {
     // MARK: History (Mac)
 
     private func unlockAndFetch(token: UUID) async -> [Visit]? {
-        guard let history else { return nil }
+        guard let history = activeHistory else { return nil }
         if !unlocked {
             status = "Waiting for Touch ID…"
             let result = await authenticator.unlock(reason: "unlock your Safari browsing history", graceMinutes: 480)
@@ -448,7 +514,7 @@ public final class TimelineModel {
         let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
             defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
-            movements = []; threads = []; travel = []; themes = []; visits = []
+                movements = []; threads = []; travel = []; themes = []; visits = []
             sites = []; trackerSignals = []; historyLoaded = false; turns = []; journeyReceipt = nil
             agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
             let oldJourney = journey; journey = nil

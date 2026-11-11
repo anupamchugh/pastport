@@ -557,4 +557,79 @@ struct HomeSearchTests {
         #expect(order.contains(.privacy))
         #expect(order.last == .travel)
     }
+
+    // MARK: Safari export import (iPhone)
+
+    private func exportZip(rows: Int = 3) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "pastport-model-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let base = Int64(Date.now.timeIntervalSince1970 - 86_400 * 5) * 1_000_000
+        let items = (0..<rows).map {
+            "{\"url\":\"https://example.com/p\($0)?q=private\",\"title\":\"Page \($0)\",\"time_usec\":\(base + Int64($0) * 1_000_000),\"visits_count\":1}"
+        }.joined(separator: ",")
+        let json = "{\"metadata\":{\"browser_name\":\"Safari\",\"data_type\":\"history\"},\"history\":[\(items)]}"
+        try Data(json.utf8).write(to: dir.appending(path: "History.json"))
+        let zip = Process()
+        zip.executableURL = URL(filePath: "/usr/bin/zip")
+        zip.currentDirectoryURL = dir
+        zip.arguments = ["-q", "export.zip", "History.json"]
+        try zip.run(); zip.waitUntilExit()
+        return dir.appending(path: "export.zip")
+    }
+
+    private func importModel(auth: UnlockResult = .unlocked) -> (TimelineModel, ImportedHistorySource, CallLog) {
+        let log = CallLog()
+        let source = ImportedHistorySource()
+        let model = TimelineModel(history: nil, importedHistory: source, photos: LoggedPhotos(log: log),
+                                  authenticator: LoggedAuth(log: log, result: auth),
+                                  timelineAnswerer: ScriptedAnswerer(updates: []), appleIntelligenceReady: { false })
+        return (model, source, log)
+    }
+
+    @Test func importedExportBecomesAScrubbedSessionTimelineAfterAuthentication() async throws {
+        let (model, source, log) = importModel()
+        #expect(model.canImportHistory && !model.canReadHistory)
+        #expect(model.safariLine == TimelineModel.safariCopy)
+        model.importSafariExport(from: try exportZip())
+        try await waitUntil { model.historyLoaded }
+        #expect(log.value.first == "authenticate")
+        #expect(model.importedHistoryActive && model.canReadHistory && !model.isLocked)
+        #expect(model.safariLine == TimelineModel.importedSafariCopy)
+        #expect(model.coverage.contains("Safari export · imported on this device"))
+        #expect(model.visits.map(\.url).allSatisfy { !$0.contains("?") })
+        #expect(model.visits.count == 3 && source.isLoaded)
+    }
+
+    @Test func deniedAuthenticationNeverOpensTheFile() async throws {
+        let (model, source, _) = importModel(auth: .cancelled)
+        // The file does not exist: reading it would give a different message than the unlock failure.
+        model.importSafariExport(from: URL(filePath: "/nonexistent/export.zip"))
+        try await waitUntil { !model.busy }
+        #expect(model.importStatus == TimelineModel.unlockFailed)
+        #expect(!model.importedHistoryActive && !source.isLoaded)
+    }
+
+    @Test func aBadExportLeavesTheEarlierImportInPlace() async throws {
+        let (model, source, _) = importModel()
+        model.importSafariExport(from: try exportZip(rows: 2))
+        try await waitUntil { model.historyLoaded }
+        let notZip = FileManager.default.temporaryDirectory.appending(path: "pastport-\(UUID().uuidString).zip")
+        try Data("not a zip".utf8).write(to: notZip)
+        defer { try? FileManager.default.removeItem(at: notZip) }
+        model.importSafariExport(from: notZip)
+        try await waitUntil { !model.busy && model.importStatus == SafariExportError.notAnArchive.description }
+        #expect(model.importedHistoryActive && source.isLoaded)
+        #expect(model.visits.count == 2)
+    }
+
+    @Test func lockClearsTheImportedHistoryAndItsStatus() async throws {
+        let (model, source, _) = importModel()
+        model.importSafariExport(from: try exportZip())
+        try await waitUntil { model.historyLoaded }
+        model.lockAndClear()
+        #expect(!model.importedHistoryActive && !source.isLoaded && model.isLocked)
+        #expect(model.visits.isEmpty && model.importStatus.isEmpty && model.coverage.isEmpty)
+        #expect(!model.canReadHistory)
+        #expect(model.safariLine == TimelineModel.safariCopy)
+    }
 }

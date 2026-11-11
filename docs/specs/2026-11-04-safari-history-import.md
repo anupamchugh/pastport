@@ -1,7 +1,7 @@
 # Safari history import for iPhone and iPad — design proposal (2026-11-04)
 
-Status: design only. This document does not change the current iOS product or authorize a
-release. It resolves the privacy and data-shape questions that kept Safari snapshot import out of
+Status: implemented in code on 11 Nov 2026 (`ZipArchive`, `SafariExport`, `ImportedHistorySource`, `SafariImportSection`); the
+real-export and iPhone checks in the acceptance list are owner steps still to run. This document does not authorize a release. It resolves the privacy and data-shape questions that kept Safari snapshot import out of
 the 2.0 specification.
 
 ## Product shape

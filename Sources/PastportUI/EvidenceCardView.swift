@@ -86,11 +86,13 @@ public struct TrailTimelineView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 WindowChips(days: $model.days)
+                ImportedHistoryCard(model: model)
+                SafariImportSection(model: model)
                 TrailChips(trail: $model.trail)
                 Text(model.photoStatus).font(.footnote).foregroundStyle(Palette.muted)
                 let cards = model.evidenceCards
                 if cards.isEmpty {
-                    Text(emptyLine).font(.callout).foregroundStyle(Palette.muted).paperCard()
+                    if !model.importedHistoryActive { Text(emptyLine).font(.callout).foregroundStyle(Palette.muted).paperCard() }
                 } else {
                     ForEach(cards) { EvidenceCardView(card: $0) }
                 }

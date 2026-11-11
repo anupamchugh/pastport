@@ -34,7 +34,7 @@ public struct PrivacyScreen: View {
             heading("What iPhone can read", "iphone")
             Text(TimelineModel.photoCopy)
             Text("Screenshots you add are read on this iPhone. Emails, one-time codes and card numbers are hidden before you see them.")
-            Text(TimelineModel.safariCopy)
+            Text(model.safariLine)
         }
         .font(.callout).foregroundStyle(Palette.muted)
         .paperCard()

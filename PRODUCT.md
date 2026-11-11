@@ -15,7 +15,7 @@ A general audience: anyone who wants to look back at their own recent activity (
 
 ## Product Purpose
 
-Pastport is a private, on-device timeline of what your devices already recorded. Swift computes every fact; the on-device model only phrases a small evidence packet and must say it does not know when the evidence has no answer. iOS cannot read Safari history, and the iPhone app says so instead of faking it (`README.md`, "iPhone and iPad").
+Pastport is a private, on-device timeline of what your devices already recorded. Swift computes every fact; the on-device model only phrases a small evidence packet and must say it does not know when the evidence has no answer. iOS cannot read Safari history, and the iPhone app says so instead of faking it; the only Safari history it shows is an export the person chooses (`README.md`, "iPhone and iPad"; `docs/specs/2026-11-04-safari-history-import.md`).
 
 ## Screens and their one job
 
@@ -76,7 +76,7 @@ Planned (not implemented; source: `docs/specs/2026-10-21-pastport-2.0-iphone.md`
 
 ## Out of scope
 
-Safari history import on iPhone (spec section 8; a Mac-exported scrubbed summary is the only shape considered), iCloud sync, widgets, Apple Watch, Android, uploads, signing and release. Mac-only: Ollama, CLI, menu bar. Any change to the Mac Safari reading.
+iCloud sync, widgets, Apple Watch, Android, uploads, signing and release. Mac-only: Ollama, CLI, menu bar. Any change to the Mac Safari reading.
 
 ## Assumptions recorded
 

@@ -38,6 +38,24 @@ extension TimelineModel {
         status = "Demo data · no history read"
     }
 
+    /// iPhone preview of an imported Safari export, built from fictional visits. No file is read.
+    public func loadDemoImport() {
+        guard let importedHistory else { return }
+        let export = SafariExportResult(visits: DemoData.visits, profiles: 1,
+                                        rowsRead: DemoData.visits.count, isPartial: false)
+        importedHistory.load(export)
+        importedHistoryActive = true
+        unlocked = true; isLocked = false
+        coverage = HistorySnapshot(visits: export.visits, sourceCount: 1, sourceRows: export.rowsRead,
+                                   isComplete: true, sourceLabel: SafariExport.sourceLabel).scope
+        importStatus = "Imported. This stays in memory on this device until you lock or leave Pastport."
+        loadDemo()
+        status = "Demo export · fictional visits; no file read"
+    }
+
+    /// Shows the refusal line a rejected export gives, for previews and screenshots.
+    public func loadDemoImportRefusal() { importStatus = SafariExportError.unsafeArchive.description }
+
     func loadDemoPhotos() {
         let now = Date()
         photoEvents = PhotoEvents.cluster([

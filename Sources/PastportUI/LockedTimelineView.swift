@@ -74,9 +74,11 @@ public struct LockedTimelineView: View {
                 .disabled(model.busy)
                 .accessibilityHint("Asks for Face ID or your passcode, then reads photo activity for this window")
 
+                SafariImportSection(model: model)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Label(TimelineModel.photoCopy, systemImage: "photo.on.rectangle")
-                    Label(TimelineModel.safariCopy, systemImage: "safari")
+                    Label(model.safariLine, systemImage: "safari")
                 }
                 .font(.footnote).foregroundStyle(Palette.muted)
                 .paperCard()

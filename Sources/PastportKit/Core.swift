@@ -144,12 +144,15 @@ public struct HistorySnapshot: Sendable {
     public let sourceCount: Int
     public let sourceRows: Int
     public let isComplete: Bool
+    /// Names a source that is not the Mac's Safari database, such as an imported export.
+    public let sourceLabel: String?
 
-    public init(visits: [Visit], sourceCount: Int, sourceRows: Int, isComplete: Bool) {
+    public init(visits: [Visit], sourceCount: Int, sourceRows: Int, isComplete: Bool, sourceLabel: String? = nil) {
         self.visits = visits
         self.sourceCount = sourceCount
         self.sourceRows = sourceRows
         self.isComplete = isComplete
+        self.sourceLabel = sourceLabel
     }
 
     public var scope: String {
@@ -157,7 +160,7 @@ public struct HistorySnapshot: Sendable {
         if let first = visits.last?.time, let last = visits.first?.time {
             range = " · \(first.formatted(date: .abbreviated, time: .omitted)) – \(last.formatted(date: .abbreviated, time: .omitted))"
         } else { range = "" }
-        return "\(visits.count) unique visits · \(sourceCount) Safari sources\(range) · "
+        return "\(visits.count) unique visits · \(sourceLabel ?? "\(sourceCount) Safari sources")\(range) · "
             + (isComplete ? "all matching retained rows read" : "PARTIAL: safety row cap reached")
     }
 }

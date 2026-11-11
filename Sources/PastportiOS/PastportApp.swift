@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The one model, shared so the Open Timeline intent reaches the same screen the window shows.
 @MainActor enum SharedTimeline {
-    static let model = TimelineModel(history: nil, days: 30)
+    static let model = TimelineModel(history: nil, importedHistory: ImportedHistorySource(), days: 30)
 }
 
 @main
@@ -24,6 +24,8 @@ struct PastportApp: App {
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--ask") { model.openAskForScreenshots() }
                     if ProcessInfo.processInfo.arguments.contains("--ask-empty") { model.tab = .ask }
+                    if ProcessInfo.processInfo.arguments.contains("--import-demo") { model.loadDemoImport() }
+                    if ProcessInfo.processInfo.arguments.contains("--import-refused") { model.loadDemoImportRefusal() }
                     #endif
                 }
         }
