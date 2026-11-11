@@ -134,46 +134,6 @@ public final class IntentTaskSynthesizer: Sendable {
         )
     }
 
-    /// When Apple Foundation Models are enabled and ready on-device, refines the action plan
-    /// using on-device inference, while remaining strictly grounded in the thread's queries.
-    public func refineWithFoundationModel(
-        plan: IntentActionPlan,
-        thread: IntentThread
-    ) async -> IntentActionPlan {
-        guard AppleFoundation.isReady else { return plan }
-        let prompt = """
-        Given this personal browsing intent thread:
-        Topic: \(thread.term)
-        Queries:
-        \(thread.promptLines)
-
-        Existing proposed tasks:
-        \(plan.tasks.map { "- \($0.title)" }.joined(separator: "\n"))
-
-        Suggest 1 additional high-value preparation task in plain English as a single line.
-        """
-        guard let output = try? await AppleFoundation.generate(prompt: prompt),
-              !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return plan
-        }
-        let cleanTask = output.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "^[-*•]\\s*", with: "", options: .regularExpression)
-        var updatedTasks = plan.tasks
-        updatedTasks.append(IntentTask(
-            id: deterministicUUID(seed: "\(thread.term)-ai-refinement"),
-            title: cleanTask,
-            reason: "Synthesized on-device by Apple Foundation Models from your search thread.",
-            isMissingGap: false,
-            actionURL: nil
-        ))
-        return IntentActionPlan(
-            topic: plan.topic,
-            summary: plan.summary,
-            tasks: updatedTasks,
-            readingTopics: plan.readingTopics
-        )
-    }
-
     // MARK: - Classification Helpers
 
     private func isTravel(keywords: String, thread: IntentThread, bookings: [Booking]) -> Bool {
