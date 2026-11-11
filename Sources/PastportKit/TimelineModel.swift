@@ -393,6 +393,13 @@ public final class TimelineModel {
         }
     }
 
+    /// What the "Ask about a page" Shortcut does: show Ask on the locked screen with a question about the page's
+    /// site waiting. Nothing is read, and nothing of the address except its host is kept.
+    public func openAsk(aboutPage url: URL) {
+        guard let question = SharedPage.question(for: url) else { openAsk(question: ""); return }
+        openAsk(question: question)
+    }
+
     /// The import was cancelled in the file picker; nothing was read.
     public func importCancelled() { importStatus = SafariExportError.cancelled.description }
 
@@ -550,7 +557,13 @@ public final class TimelineModel {
         busy = true
         let owner = UUID(); operationID = owner
         operation = Task { @MainActor in
-            defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
+            defer {
+                if token == generation, operationID == owner {
+                    busy = false; operationID = nil
+                    // A question handed over while locked (Siri, a shared page) is asked once the history is in.
+                    if historyLoaded { askPendingQuestion() }
+                }
+            }
             codex.revoke()
             movements = []; threads = []; travel = []; themes = []; visits = []
             sites = []; trackerSignals = []; historyLoaded = false; turns = []; skepticReviews = [:]; historian = nil; journeyReceipt = nil

@@ -111,3 +111,19 @@ struct PastportShortcuts: AppShortcutsProvider {
         )
     }
 }
+
+/// Opens Ask on the locked screen with a question about a page's site. Run it from a Shortcut that receives web
+/// addresses from the Share Sheet. Only the host is used. Nothing is read, stored or returned.
+struct AskAboutPageIntent: AppIntent {
+    static let title: LocalizedStringResource = "Ask Pastport About a Page"
+    static let description = IntentDescription("Asks when you last visited the site of a page you share. Pastport answers on this device from a Safari export you import.")
+    static let supportedModes: IntentModes = .foreground
+
+    @Parameter(title: "Page", description: "A web address, such as one shared from Safari.")
+    var page: URL
+
+    @MainActor func perform() async throws -> some IntentResult {
+        SharedTimeline.model.openAsk(aboutPage: page)
+        return .result()
+    }
+}

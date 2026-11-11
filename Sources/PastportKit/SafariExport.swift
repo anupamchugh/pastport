@@ -220,3 +220,18 @@ public final class ImportedHistorySource: HistorySource, @unchecked Sendable {
                                isComplete: !result.isPartial, sourceLabel: SafariExport.sourceLabel)
     }
 }
+
+/// Turns an address shared from Safari into a question about its site. Only the host is used, so a path, query
+/// string or fragment can never reach the question, Ask or a model.
+public enum SharedPage {
+    public static func question(for url: URL) -> String? {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = parts.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              parts.user == nil, parts.password == nil, var host = parts.host?.lowercased() else { return nil }
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        let allowed = CharacterSet.lowercaseLetters.union(.decimalDigits).union(CharacterSet(charactersIn: ".-"))
+        guard host.contains("."), host.rangeOfCharacter(from: .lowercaseLetters) != nil,
+              host.unicodeScalars.allSatisfy(allowed.contains), !host.hasPrefix("."), !host.hasSuffix(".") else { return nil }
+        return "When did I last visit \(host)?"
+    }
+}

@@ -83,6 +83,11 @@ private struct PendingQuestionCard: View {
             .buttonStyle(.borderedProminent)
             .disabled(model.busy)
             .accessibilityHint("Asks for Face ID or your passcode, reads photo activity, then answers the question")
+            if model.canImportHistory, !model.importedHistoryActive {
+                Text("To answer from your Safari history, import an export. The question is asked once it is in.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                SafariImportSection(model: model)
+            }
         }
     }
 }
