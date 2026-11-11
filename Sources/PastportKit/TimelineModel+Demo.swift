@@ -56,6 +56,22 @@ extension TimelineModel {
     /// Shows the refusal line a rejected export gives, for previews and screenshots.
     public func loadDemoImportRefusal() { importStatus = SafariExportError.unsafeArchive.description }
 
+    /// iPhone preview of an answer with the Skeptic's review, from fictional text. No model runs.
+    /// With `reviewed` false the answer is shown with the "Challenge this answer" button and no review.
+    public func loadDemoSkeptic(reviewed: Bool) {
+        loadDemoImport()
+        let answer = "You opened 99 pages in this window, and you spent hours on guide.example."
+        var turn = AskTurn(prompt: "How many pages did I open?", answer: answer, status: .answered)
+        turn.note = "Apple Intelligence · on-device history evidence"
+        turns = [turn]
+        tab = .ask
+        guard reviewed else { return }
+        skepticReviews[turn.id] = .done(SkepticReview(findings: [
+            SkepticFinding(issue: .unsupportedNumber, quote: "99", why: "The recorded facts do not contain this number."),
+            SkepticFinding(issue: .timeOrIntentClaim, quote: "you spent", why: "A visit shows a page was opened, not that it was read or for how long."),
+        ], model: .reviewed))
+    }
+
     func loadDemoPhotos() {
         let now = Date()
         photoEvents = PhotoEvents.cluster([

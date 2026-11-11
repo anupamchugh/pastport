@@ -110,6 +110,8 @@ public final class TimelineModel {
     public internal(set) var themes: [(name: String, visits: Int)] = []
 
     public internal(set) var turns: [AskTurn] = []
+    /// The Skeptic's review of each finished answer, in memory only. Every lock clears it.
+    public internal(set) var skepticReviews: [AskTurn.ID: SkepticState] = [:]
     public var input = ""
     /// A question the "Ask Pastport" App Intent handed over. It waits, unread and unanswered,
     /// until the person unlocks; then it is asked once. Every lock clears it.
@@ -147,6 +149,7 @@ public final class TimelineModel {
     @ObservationIgnored private let timelineAnswerer: any TimelineAnswering
     @ObservationIgnored private let localModels: LocalModels?
     @ObservationIgnored private let appleIntelligenceReady: @Sendable () -> Bool
+    @ObservationIgnored private let skeptic: any SkepticReviewing
     #if DEBUG
     /// Debug builds only: fictional data instead of the real sources.
     @ObservationIgnored public var demoMode = false
@@ -186,6 +189,7 @@ public final class TimelineModel {
         timelineAnswerer: any TimelineAnswering = FoundationTimelineAnswerer(),
         localModels: LocalModels? = nil,
         appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady },
+        skeptic: any SkepticReviewing = FoundationSkeptic(),
         days: Int = 90) {
         self.days = days
         self.history = history
@@ -196,6 +200,7 @@ public final class TimelineModel {
         self.timelineAnswerer = timelineAnswerer
         self.localModels = localModels
         self.appleIntelligenceReady = appleIntelligenceReady
+        self.skeptic = skeptic
         codex.attach { [weak self] in self?.mcpHistoryView }
     }
 
@@ -259,7 +264,7 @@ public final class TimelineModel {
         codex.revoke()
         importedHistory?.clear(); importedHistoryActive = false; importStatus = ""
         visits = []; movements = []; threads = []; travel = []; themes = []
-        photoEvents = []; screenshots = []; turns = []; input = ""; pendingQuestion = nil
+        photoEvents = []; screenshots = []; turns = []; skepticReviews = [:]; input = ""; pendingQuestion = nil
         coverage = ""; profile = ""; journeyReceipt = nil
         sites = []; trackerSignals = []; historyLoaded = false
         historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
@@ -527,7 +532,7 @@ public final class TimelineModel {
             defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             codex.revoke()
             movements = []; threads = []; travel = []; themes = []; visits = []
-            sites = []; trackerSignals = []; historyLoaded = false; turns = []; journeyReceipt = nil
+            sites = []; trackerSignals = []; historyLoaded = false; turns = []; skepticReviews = [:]; journeyReceipt = nil
             agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
             let oldJourney = journey; journey = nil
             await oldJourney?.clear()
@@ -672,6 +677,60 @@ public final class TimelineModel {
             } else {
                 await answerFromTimeline(q, turnID: turn.id, token: token)
             }
+        }
+    }
+
+    private static let answerBasisMarker = "\nSource evidence: "
+
+    /// Challenges one finished answer against the recorded facts: code checks first, then, when Apple
+    /// Intelligence is ready, a model review whose quotes are checked against the answer. The review stays in
+    /// memory and is dropped by a lock; one is run per answer.
+    public func challenge(_ turnID: AskTurn.ID) {
+        guard let turn = turns.first(where: { $0.id == turnID }), turn.status == .answered,
+              skepticReviews[turnID] == nil else { return }
+        let parts = turn.answer.components(separatedBy: Self.answerBasisMarker)
+        let answer = (parts.first ?? turn.answer).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !answer.isEmpty else { return }
+        skepticReviews[turnID] = .checking
+        let token = generation
+        let question = turn.prompt
+        let basis = parts.dropFirst().flatMap { $0.components(separatedBy: "\n") }
+        let useHistory = canReadHistory && historyLoaded
+        let timelineLines = timelineEvidence.lines
+        let snapshot = visits
+        let reviewer = skeptic
+        let ready = appleIntelligenceReady()
+        Task { @MainActor in
+            let evidence: [String]
+            if useHistory {
+                // Any retained-history slice may have fed the answer, so every slice counts as a known fact.
+                let slices = await Task.detached {
+                    [.overview, .travel, .location, .research, .trackers].flatMap { intent in
+                        AskWorkflow.evidence(for: intent, visits: snapshot).components(separatedBy: "\n")
+                    }
+                }.value
+                evidence = basis + slices
+            } else {
+                evidence = basis + timelineLines
+            }
+            guard token == generation else { return }
+            var findings = SkepticChecks.review(answer: answer, evidenceLines: evidence)
+            var modelStatus = SkepticReview.ModelStatus.notRun
+            if ready {
+                do {
+                    let proposed = try await boundedTask(timeout: .seconds(20), operation: {
+                        try await reviewer.review(question: question, answer: answer, evidenceLines: evidence)
+                    }, onTimeout: {})
+                    guard token == generation else { return }
+                    findings += SkepticChecks.accept(model: proposed, answer: answer, existing: findings)
+                    modelStatus = .reviewed
+                } catch {
+                    guard token == generation else { return }
+                    modelStatus = .failed
+                }
+            }
+            guard token == generation else { return }
+            skepticReviews[turnID] = .done(SkepticReview(findings: findings, model: modelStatus))
         }
     }
 

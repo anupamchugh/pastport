@@ -501,15 +501,20 @@ enum HistoryJourneyValidation {
         return continuationPhrases.contains(where: query.hasPrefix) ? previous : nil
     }
 
+    /// Phrases that turn a page visit into a completed booking or purchase. Shared with the Skeptic.
+    static let completionSignals = [
+        "i booked", "you booked", "was booked", "booking was confirmed",
+        "purchase completed", "you purchased", "trip was completed",
+        "confirms a booking", "confirms the booking", "confirms your booking",
+        "confirms a purchase", "confirms the purchase", "confirms your purchase",
+        "confirming a booking", "confirming your booking"
+    ]
+
+    /// Phrases that turn evidence into completed actions. Shared with the Skeptic.
+    static let unsupportedClaims = ["completed bookings", "completed purchases", "trips you took", "you travelled", "you traveled", "you visited", "you paid", "you checked in"]
+
     static func allowsNarrative(_ text: String, evidenceLines: [String]) -> Bool {
         let lower = text.lowercased()
-        let completionSignals = [
-            "i booked", "you booked", "was booked", "booking was confirmed",
-            "purchase completed", "you purchased", "trip was completed",
-            "confirms a booking", "confirms the booking", "confirms your booking",
-            "confirms a purchase", "confirms the purchase", "confirms your purchase",
-            "confirming a booking", "confirming your booking"
-        ]
         if completionSignals.contains(where: lower.contains) { return false }
         if lower.contains("confirmed") && !lower.contains("does not confirm") && !lower.contains("not confirm") {
             return false
@@ -530,7 +535,6 @@ enum HistoryJourneyValidation {
         }
         guard numbers(text).isSubset(of: numbers(packet)) else { return false }
         // A model may cite page evidence, but must not turn it into completed actions.
-        let unsupportedClaims = ["completed bookings", "completed purchases", "trips you took", "you travelled", "you traveled", "you visited", "you paid", "you checked in"]
         if unsupportedClaims.contains(where: lower.contains) { return false }
         return true
     }

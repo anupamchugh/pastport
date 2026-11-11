@@ -17,7 +17,12 @@ public struct EvidenceAskView: View {
                         PendingQuestionCard(model: model, question: question)
                     } else if model.turns.isEmpty { starters }
                     ForEach(model.turns) { turn in
+                        #if os(iOS)
+                        AskTurnView(turn: turn, onFollowUp: { model.input = $0 },
+                                    skeptic: model.skepticReviews[turn.id], onChallenge: { model.challenge(turn.id) })
+                        #else
                         AskTurnView(turn: turn, onFollowUp: { model.input = $0 })
+                        #endif
                     }
                 }.padding(16)
             }
@@ -113,12 +118,17 @@ public struct AskComposer: View {
 public struct AskTurnView: View {
     let turn: AskTurn
     let onFollowUp: ((String) -> Void)?
+    let skeptic: SkepticState?
+    let onChallenge: (() -> Void)?
     @State private var showingMarkdown = false
     @State private var exportingMarkdown = false
 
-    public init(turn: AskTurn, onFollowUp: ((String) -> Void)? = nil) {
+    public init(turn: AskTurn, onFollowUp: ((String) -> Void)? = nil,
+                skeptic: SkepticState? = nil, onChallenge: (() -> Void)? = nil) {
         self.turn = turn
         self.onFollowUp = onFollowUp
+        self.skeptic = skeptic
+        self.onChallenge = onChallenge
     }
 
     public var body: some View {
@@ -166,6 +176,7 @@ public struct AskTurnView: View {
                 if let note = turn.note {
                     Text(note).font(.footnote).foregroundStyle(.secondary)
                 }
+                if turn.status == .answered, let onChallenge { SkepticCard(state: skeptic, onChallenge: onChallenge) }
                 if let statusLine {
                     Label(statusLine.text, systemImage: statusLine.icon).font(.footnote.weight(.medium))
                         .foregroundStyle(.secondary)

@@ -26,6 +26,8 @@ struct PastportApp: App {
                     if ProcessInfo.processInfo.arguments.contains("--ask-empty") { model.tab = .ask }
                     if ProcessInfo.processInfo.arguments.contains("--import-demo") { model.loadDemoImport() }
                     if ProcessInfo.processInfo.arguments.contains("--import-refused") { model.loadDemoImportRefusal() }
+                    if ProcessInfo.processInfo.arguments.contains("--skeptic-demo") { model.loadDemoSkeptic(reviewed: false) }
+                    if ProcessInfo.processInfo.arguments.contains("--skeptic-demo-reviewed") { model.loadDemoSkeptic(reviewed: true) }
                     #endif
                 }
         }
