@@ -15,7 +15,7 @@ public struct SafariImportSection: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label("Safari export", systemImage: "square.and.arrow.down")
                     .font(.headline).foregroundStyle(Palette.ink)
-                Text("Export your history from Safari in Settings, then choose the ZIP here. Only history is read. Passwords, cards and bookmarks in the file are ignored.")
+                Text("Export from Safari, then choose the ZIP here. Pastport reads only the history and the Reading List. Passwords, cards and other bookmarks in the file are never opened.")
                     .font(.footnote).foregroundStyle(Palette.muted)
                 Button { choosing = true } label: {
                     Label(model.importedHistoryActive ? "Choose another export" : "Choose Safari export",
@@ -70,6 +70,18 @@ public struct ImportedHistoryCard: View {
                         Text("\(site.visits)").font(.callout.monospacedDigit()).foregroundStyle(Palette.muted)
                     }
                     .accessibilityElement(children: .combine)
+                }
+                if !model.readingList.isEmpty {
+                    Divider()
+                    Label("Reading List · \(model.readingList.count)", systemImage: "eyeglasses")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Palette.ink)
+                    ForEach(model.readingList.prefix(3)) { item in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title).font(.callout).foregroundStyle(Palette.ink).lineLimit(2)
+                            Text(item.host).font(.caption).foregroundStyle(Palette.muted)
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
                 }
                 Text("Ask can answer from this export. Nothing leaves this iPhone.")
                     .font(.caption).foregroundStyle(Palette.muted)

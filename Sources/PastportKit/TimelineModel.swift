@@ -141,6 +141,8 @@ public final class TimelineModel {
     public internal(set) var importedHistoryActive = false
     /// The last import's outcome in plain words, shown beside the import button. Never names a file.
     public internal(set) var importStatus = ""
+    /// The imported Reading List, from the export's Bookmarks.html. Empty until an import and after every lock.
+    public var readingList: [ReadingListItem] { importedHistoryActive ? (importedHistory?.readingList ?? []) : [] }
 
     @ObservationIgnored private let history: (any HistorySource)?
     @ObservationIgnored let importedHistory: ImportedHistorySource?

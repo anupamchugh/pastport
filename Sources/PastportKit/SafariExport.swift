@@ -33,6 +33,16 @@ public struct SafariExportResult: Sendable {
     public let rowsRead: Int
     /// True when the row cap cut the history; counts and totals are then lower bounds.
     public let isPartial: Bool
+    /// Pages from the export's Reading List folder, scrubbed. Empty when the export has none.
+    public let readingList: [ReadingListItem]
+
+    public init(visits: [Visit], profiles: Int, rowsRead: Int, isPartial: Bool, readingList: [ReadingListItem] = []) {
+        self.visits = visits
+        self.profiles = profiles
+        self.rowsRead = rowsRead
+        self.isPartial = isPartial
+        self.readingList = readingList
+    }
 }
 
 /// Reads the history out of a ZIP made by Safari's "Export Browsing Data". It works on the bytes in memory,
@@ -42,14 +52,18 @@ public enum SafariExport {
     public static let maxFieldBytes = 8 * 1024
     public static let sourceLabel = "Safari export · imported on this device"
 
+    /// `opened` is told the name of every archive entry whose bytes are read, in order. Only `History*.json` and
+    /// `Bookmarks.html` are ever opened; passwords, cards, extensions and anything else are never touched.
     public static func read(from url: URL, limits: ZipLimits = .safariExport,
-                            maxRows: Int = SafariExport.maxRows) throws -> SafariExportResult {
-        try read(archive: try open { try ZipArchive(contentsOf: url, limits: limits) }, maxRows: maxRows)
+                            maxRows: Int = SafariExport.maxRows,
+                            opened: (String) -> Void = { _ in }) throws -> SafariExportResult {
+        try read(archive: try open { try ZipArchive(contentsOf: url, limits: limits) }, maxRows: maxRows, opened: opened)
     }
 
     public static func read(bytes: Data, limits: ZipLimits = .safariExport,
-                            maxRows: Int = SafariExport.maxRows) throws -> SafariExportResult {
-        try read(archive: try open { try ZipArchive(bytes: bytes, limits: limits) }, maxRows: maxRows)
+                            maxRows: Int = SafariExport.maxRows,
+                            opened: (String) -> Void = { _ in }) throws -> SafariExportResult {
+        try read(archive: try open { try ZipArchive(bytes: bytes, limits: limits) }, maxRows: maxRows, opened: opened)
     }
 
     private static func open(_ make: () throws -> ZipArchive) throws -> ZipArchive {
@@ -62,7 +76,7 @@ public enum SafariExport {
         }
     }
 
-    private static func read(archive: ZipArchive, maxRows: Int) throws -> SafariExportResult {
+    private static func read(archive: ZipArchive, maxRows: Int, opened: (String) -> Void) throws -> SafariExportResult {
         let candidates = archive.entries.filter { !$0.isDirectory && isHistoryName($0.name) }
         guard !candidates.isEmpty else { throw SafariExportError.noHistory }
 
@@ -71,6 +85,7 @@ public enum SafariExport {
         var sawWrongMetadata = false
         for entry in candidates {
             let data: Data
+            opened(entry.name)
             do { data = try archive.data(for: entry) } catch { throw SafariExportError.unsafeArchive }
             let file: HistoryFile
             do { file = try JSONDecoder().decode(HistoryFile.self, from: data) } catch {
@@ -99,7 +114,22 @@ public enum SafariExport {
             guard seen.insert(visit.cleanURL).inserted else { continue }
             visits.append(Visit(time: row.time, title: row.title, url: visit.cleanURL))
         }
-        return SafariExportResult(visits: visits, profiles: profiles, rowsRead: rowsRead, isPartial: isPartial)
+        return SafariExportResult(visits: visits, profiles: profiles, rowsRead: rowsRead, isPartial: isPartial,
+                                  readingList: readingList(in: archive, opened: opened))
+    }
+
+    /// Opened only after the history was accepted. A missing, unreadable or odd Bookmarks.html costs the
+    /// Reading List only, never the history.
+    private static func readingList(in archive: ZipArchive, opened: (String) -> Void) -> [ReadingListItem] {
+        guard let entry = archive.entries.first(where: { !$0.isDirectory && isBookmarksName($0.name) }) else { return [] }
+        opened(entry.name)
+        guard let data = try? archive.data(for: entry), let html = String(data: data, encoding: .utf8) else { return [] }
+        return ReadingListParser.parse(html)
+    }
+
+    /// Exactly `Bookmarks.html`, in the archive's top folder or at its root.
+    static func isBookmarksName(_ name: String) -> Bool {
+        (name.split(separator: "/").last.map(String.init) ?? name).lowercased() == "bookmarks.html"
     }
 
     /// Safari localizes the file names but keeps `History` as the stem in English. Other languages are
@@ -171,6 +201,9 @@ public final class ImportedHistorySource: HistorySource, @unchecked Sendable {
     public init() {}
 
     public var isLoaded: Bool { lock.withLock { result != nil } }
+
+    /// The imported Reading List; empty before an import and after `clear()`.
+    public var readingList: [ReadingListItem] { lock.withLock { result?.readingList ?? [] } }
 
     public func load(_ result: SafariExportResult) { lock.withLock { self.result = result } }
 
