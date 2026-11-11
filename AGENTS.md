@@ -45,7 +45,7 @@ This repository is public (`github.com/anupamchugh/pastport`). Anything pushed i
 
 ## Agent Notes
 - `RELEASE-READY.md` names local archive paths under a home folder; do not copy that style into new docs.
-- CI (`.github/workflows/ci.yml`, `macos-26` runner) fails on `main` (every run 3–8 Nov: `cannot find type 'PhotosPickerItem'` in `Sources/PastportUI/ExploreViews.swift`; cause not diagnosed). Local `swift test` with Xcode 27 is the gate. Do not lower the iOS 27 / macOS 27 floor to make CI green.
+- CI (`.github/workflows/ci.yml`) runs `swift test` on the `xcode-27` runner label (Xcode 27.1). The `macos-26` image stops at Xcode 26.6, which cannot build the 27 package (`PhotosPickerItem` not found). It skips `testProductionReaderUsesVisionBeforeScrubbing` because Vision cannot run on GitHub-hosted runners (`unknownError`); that test runs locally. Do not lower the iOS 27 / macOS 27 floor to make CI green.
 - `swift test` needs the Mac screen unlocked. `ScreenshotReader.read(imageData:)` writes its temporary file with `.completeFileProtection`, which fails while the screen is locked, so 6 screenshot tests in `TimelineModelTests` time out with "That image could not be read." (checked 11 Nov 2026: `CGSSessionScreenIsLocked` true, the same write fails in a bare Swift script). This is the environment, not a regression; rerun after unlocking. Check with `/usr/bin/python3 -c "import Quartz;print(Quartz.CGSessionCopyCurrentDictionary().get('CGSSessionScreenIsLocked'))"`.
 - Under heavy machine load a timing assertion can fail; `boundedTaskDoesNotWaitForNonCooperativeWork` now allows 1 s for that reason.
 - Demo mode (fictional data, `--demo`) exists only in Debug builds. Release builds must not contain it.
