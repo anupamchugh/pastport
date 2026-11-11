@@ -21,7 +21,7 @@ let package = Package(
             .product(name: "FoundationModelsKit", package: "FoundationModelsKit"),
             .product(name: "FoundationModelsTools", package: "FoundationModelsKit"),
             .product(name: "FoundationLabCore", package: "Foundation-Models-Framework-Lab"),
-        ]),
+        ], swiftSettings: [.swiftLanguageMode(.v6)]),
         // Shared SwiftUI views for the Mac and iOS apps. No AppKit, UIKit or I/O.
         .target(name: "PastportUI", dependencies: [
             "PastportKit",
