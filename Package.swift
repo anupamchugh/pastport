@@ -25,19 +25,20 @@ let package = Package(
             "PastportKit",
             .product(name: "FoundationModelsKit", package: "FoundationModelsKit"),
             .product(name: "FoundationModelsTools", package: "FoundationModelsKit"),
-        ]),
+        ], swiftSettings: [.swiftLanguageMode(.v6)]),
         // Shared SwiftUI views for the Mac and iOS apps. No AppKit, UIKit or I/O.
         .target(name: "PastportUI", dependencies: [
             "PastportKit",
             "PastportConnected",
-        ]),
+        ], swiftSettings: [.swiftLanguageMode(.v6)]),
         // Mac-only adapters: Safari's database via /usr/bin/sqlite3, osascript, local Ollama.
-        .target(name: "PastportMac", dependencies: ["PastportKit"]),
+        .target(name: "PastportMac", dependencies: ["PastportKit"], swiftSettings: [.swiftLanguageMode(.v6)]),
         // Fictional fixture and scorer for the Ask eval. Linked by the CLI only, never by an app.
-        .target(name: "PastportEval", dependencies: ["PastportKit"]),
+        .target(name: "PastportEval", dependencies: ["PastportKit"], swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(
             name: "pastport",
-            dependencies: ["PastportKit", "PastportMac", "PastportEval"]
+            dependencies: ["PastportKit", "PastportMac", "PastportEval"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "PastportBar",
