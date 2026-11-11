@@ -260,21 +260,21 @@ struct McpSessionTests {
         let broker = makeBroker(approver: ScriptedApprover(.approve(lifetime: 600)))
         let session = McpSession(broker: broker, executable: "/usr/local/bin/codex")
         let out = Outbox()
-        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("tools/list")]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("tools/list")]), send: { out.add($0) })
         #expect(try await waitFor(out, id: 1)["error"] != nil)
 
         session.receive(line(["jsonrpc": .string("2.0"), "id": .int(2), "method": .string("initialize"),
-                              "params": .object(["protocolVersion": .string("2025-06-18"), "clientInfo": .object(["name": .string("codex")])])]), send: out.add)
+                              "params": .object(["protocolVersion": .string("2025-06-18"), "clientInfo": .object(["name": .string("codex")])])]), send: { out.add($0) })
         let initialized = try await waitFor(out, id: 2)
         #expect(initialized["result"]?["serverInfo"]?["name"]?.stringValue == "pastport")
         #expect(initialized["result"]?["protocolVersion"]?.stringValue == "2025-06-18")
 
-        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(3), "method": .string("tools/list")]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(3), "method": .string("tools/list")]), send: { out.add($0) })
         guard case .array(let tools)? = try await waitFor(out, id: 3)["result"]?["tools"] else { Issue.record("no tools"); return }
         #expect(tools.count == 3)
 
         session.receive(line(["jsonrpc": .string("2.0"), "id": .int(4), "method": .string("tools/call"),
-                              "params": .object(["name": .string("pastport_top_sites"), "arguments": .object([:])])]), send: out.add)
+                              "params": .object(["name": .string("pastport_top_sites"), "arguments": .object([:])])]), send: { out.add($0) })
         let called = try await waitFor(out, id: 4)
         #expect(called["result"]?["isError"] == .bool(false))
         #expect(called["result"]?["structuredContent"]?["sites"] != nil)
@@ -287,12 +287,12 @@ struct McpSessionTests {
         let broker = makeBroker(approver: waiting)
         let session = McpSession(broker: broker)
         let out = Outbox()
-        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("initialize"), "params": .object([:])]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("initialize"), "params": .object([:])]), send: { out.add($0) })
         _ = try await waitFor(out, id: 1)
         session.receive(line(["jsonrpc": .string("2.0"), "id": .int(2), "method": .string("tools/call"),
-                              "params": .object(["name": .string("pastport_top_sites")])]), send: out.add)
+                              "params": .object(["name": .string("pastport_top_sites")])]), send: { out.add($0) })
         while waiting.requests.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
-        session.receive(line(["jsonrpc": .string("2.0"), "method": .string("notifications/cancelled"), "params": .object(["requestId": .int(2)])]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "method": .string("notifications/cancelled"), "params": .object(["requestId": .int(2)])]), send: { out.add($0) })
         try await Task.sleep(for: .milliseconds(200))
         #expect(out.reply(id: 2) == nil)
         session.close()
@@ -303,14 +303,14 @@ struct McpSessionTests {
         let broker = makeBroker(approver: ScriptedApprover(.approve(lifetime: 600)))
         let session = McpSession(broker: broker)
         let out = Outbox()
-        session.receive(Data("not json".utf8), send: out.add)
+        session.receive(Data("not json".utf8), send: { out.add($0) })
         #expect(out.all.first?["error"]?["code"] == .int(-32700))
-        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(9), "method": .string("resources/read")]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(9), "method": .string("resources/read")]), send: { out.add($0) })
         #expect(try await waitFor(out, id: 9)["error"]?["code"] == .int(-32601))
-        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("initialize"), "params": .object([:])]), send: out.add)
+        session.receive(line(["jsonrpc": .string("2.0"), "id": .int(1), "method": .string("initialize"), "params": .object([:])]), send: { out.add($0) })
         _ = try await waitFor(out, id: 1)
         session.receive(line(["jsonrpc": .string("2.0"), "id": .int(2), "method": .string("tools/call"),
-                              "params": .object(["name": .string("pastport_top_sites")])]), send: out.add)
+                              "params": .object(["name": .string("pastport_top_sites")])]), send: { out.add($0) })
         _ = try await waitFor(out, id: 2)
         #expect(await !broker.activeGrants(for: session.id).isEmpty)
         session.close()

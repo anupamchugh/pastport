@@ -91,8 +91,7 @@ public struct ScreenshotReader: Sendable {
             request.automaticallyDetectsLanguage = true
             let observations = try await request.perform(on: url)
             return observations.compactMap { $0.topCandidates(1).first?.string }
-
-            #endif
+            #else
             return try await Task.detached {
                 let request = VNRecognizeTextRequest()
                 request.recognitionLevel = .accurate
@@ -104,6 +103,7 @@ public struct ScreenshotReader: Sendable {
                     $0.topCandidates(1).first?.string
                 } ?? []
             }.value
+            #endif
         }
     }
 

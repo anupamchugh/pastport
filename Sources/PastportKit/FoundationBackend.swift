@@ -77,6 +77,7 @@ func foundationTokenUsage<Content: Generable>(
         input: response.usage.input.totalTokenCount,
         output: response.usage.output.totalTokenCount
     )
-    #endif
+    #else
     return FoundationUsageAccounting.usage(input: nil, output: nil)
+    #endif
 }
