@@ -72,6 +72,12 @@ extension TimelineModel {
         ], model: .reviewed))
     }
 
+    /// iPhone preview of the Historian's story over the fictional import. Plain facts chapters; no model runs.
+    public func loadDemoHistorian() {
+        loadDemoImport()
+        historian = HistorianStory(chapters: HistorianPlanner.chapters(from: DemoData.visits), isRunning: false)
+    }
+
     func loadDemoPhotos() {
         let now = Date()
         photoEvents = PhotoEvents.cluster([

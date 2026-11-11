@@ -112,6 +112,8 @@ public final class TimelineModel {
     public internal(set) var turns: [AskTurn] = []
     /// The Skeptic's review of each finished answer, in memory only. Every lock clears it.
     public internal(set) var skepticReviews: [AskTurn.ID: SkepticState] = [:]
+    /// The Historian's story of the window, in memory only. Every lock clears it.
+    public internal(set) var historian: HistorianStory?
     public var input = ""
     /// A question the "Ask Pastport" App Intent handed over. It waits, unread and unanswered,
     /// until the person unlocks; then it is asked once. Every lock clears it.
@@ -150,6 +152,7 @@ public final class TimelineModel {
     @ObservationIgnored private let localModels: LocalModels?
     @ObservationIgnored private let appleIntelligenceReady: @Sendable () -> Bool
     @ObservationIgnored private let skeptic: any SkepticReviewing
+    @ObservationIgnored private let historianNarrator: any HistorianNarrating
     #if DEBUG
     /// Debug builds only: fictional data instead of the real sources.
     @ObservationIgnored public var demoMode = false
@@ -190,6 +193,7 @@ public final class TimelineModel {
         localModels: LocalModels? = nil,
         appleIntelligenceReady: @escaping @Sendable () -> Bool = { AppleFoundation.isReady },
         skeptic: any SkepticReviewing = FoundationSkeptic(),
+        historian: any HistorianNarrating = FoundationHistorian(),
         days: Int = 90) {
         self.days = days
         self.history = history
@@ -201,6 +205,7 @@ public final class TimelineModel {
         self.localModels = localModels
         self.appleIntelligenceReady = appleIntelligenceReady
         self.skeptic = skeptic
+        self.historianNarrator = historian
         codex.attach { [weak self] in self?.mcpHistoryView }
     }
 
@@ -264,7 +269,7 @@ public final class TimelineModel {
         codex.revoke()
         importedHistory?.clear(); importedHistoryActive = false; importStatus = ""
         visits = []; movements = []; threads = []; travel = []; themes = []
-        photoEvents = []; screenshots = []; turns = []; skepticReviews = [:]; input = ""; pendingQuestion = nil
+        photoEvents = []; screenshots = []; turns = []; skepticReviews = [:]; historian = nil; input = ""; pendingQuestion = nil
         coverage = ""; profile = ""; journeyReceipt = nil
         sites = []; trackerSignals = []; historyLoaded = false
         historyFocus = .overview; recommendedFocuses = [.overview]; suggestedQuestions = []
@@ -532,7 +537,7 @@ public final class TimelineModel {
             defer { if token == generation, operationID == owner { busy = false; operationID = nil } }
             codex.revoke()
             movements = []; threads = []; travel = []; themes = []; visits = []
-            sites = []; trackerSignals = []; historyLoaded = false; turns = []; skepticReviews = [:]; journeyReceipt = nil
+            sites = []; trackerSignals = []; historyLoaded = false; turns = []; skepticReviews = [:]; historian = nil; journeyReceipt = nil
             agentTrailStops = []; agentTrailStatus = ""; agentTrailRunning = false
             let oldJourney = journey; journey = nil
             await oldJourney?.clear()
@@ -677,6 +682,42 @@ public final class TimelineModel {
             } else {
                 await answerFromTimeline(q, turnID: turn.id, token: token)
             }
+        }
+    }
+
+    /// Tells the story of the read window as up to five chapters. Swift writes each chapter's facts and a plain
+    /// sentence at once; when Apple Intelligence is ready, a model then writes each chapter's prose in turn, and
+    /// a chapter keeps its plain sentence unless the prose passes `HistorianValidation`. Memory only; a lock drops it.
+    public func tellStory() {
+        guard historyLoaded, !visits.isEmpty, historian == nil else { return }
+        let token = generation
+        let snapshot = visits
+        let narrator = historianNarrator
+        let ready = appleIntelligenceReady()
+        historian = HistorianStory(chapters: [], isRunning: true)
+        Task { @MainActor in
+            let chapters = await Task.detached { HistorianPlanner.chapters(from: snapshot) }.value
+            guard token == generation else { return }
+            historian = HistorianStory(chapters: chapters, isRunning: ready && !chapters.isEmpty)
+            guard ready else { return }
+            for index in chapters.indices {
+                let facts = chapters[index].facts
+                do {
+                    let prose = try await boundedTask(timeout: .seconds(20), operation: {
+                        try await narrator.narrate(facts: facts, voice: .archivist)
+                    }, onTimeout: {})
+                    guard token == generation else { return }
+                    let text = prose.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if HistorianValidation.allows(text, facts: facts) {
+                        historian?.chapters[index].narration = text
+                        historian?.chapters[index].origin = .model
+                    }
+                } catch {
+                    guard token == generation else { return }
+                }
+            }
+            guard token == generation else { return }
+            historian?.isRunning = false
         }
     }
 

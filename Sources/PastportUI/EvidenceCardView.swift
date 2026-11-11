@@ -87,6 +87,7 @@ public struct TrailTimelineView: View {
             VStack(alignment: .leading, spacing: 14) {
                 WindowChips(days: $model.days)
                 ImportedHistoryCard(model: model)
+                HistorianCard(model: model)
                 SafariImportSection(model: model)
                 TrailChips(trail: $model.trail)
                 Text(model.photoStatus).font(.footnote).foregroundStyle(Palette.muted)
