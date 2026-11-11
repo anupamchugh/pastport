@@ -343,6 +343,19 @@ public final class TimelineModel {
     /// succeeds. A failure leaves what was on screen as it was and says why in `importStatus`; a success keeps the
     /// scrubbed visits in memory until the next lock.
     public func importSafariExport(from url: URL) {
+        importSafariExport {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            return try SafariExport.read(from: url)
+        }
+    }
+
+    /// The same import for a file a Shortcut handed over as bytes. Face ID still comes first.
+    public func importSafariExport(data: Data) {
+        importSafariExport { try SafariExport.read(bytes: data) }
+    }
+
+    private func importSafariExport(_ read: @escaping @Sendable () throws -> SafariExportResult) {
         guard let importedHistory, !busy else { return }
         let token = generation
         busy = true
@@ -362,9 +375,7 @@ public final class TimelineModel {
             guard result == .unlocked else { importStatus = Self.unlockFailed; return }
             status = "Reading the export on this device…"
             let outcome: Result<SafariExportResult, SafariExportError> = await Task.detached {
-                let scoped = url.startAccessingSecurityScopedResource()
-                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-                do { return .success(try SafariExport.read(from: url)) } catch let error as SafariExportError {
+                do { return .success(try read()) } catch let error as SafariExportError {
                     return .failure(error)
                 } catch { return .failure(.notAnArchive) }
             }.value
@@ -387,6 +398,9 @@ public final class TimelineModel {
 
     /// The file picker could not hand over a file.
     public func importFailed() { importStatus = SafariExportError.notAnArchive.description }
+
+    /// Safari's export sheet could not be opened.
+    public func exportSheetFailed() { importStatus = "Safari could not open its export sheet. Open Settings > Apps > Safari and choose Export Browsing Data." }
 
     /// After a successful unlock, asks the question Siri handed over. A failed unlock keeps it waiting.
     private func askPendingQuestion() {

@@ -1,6 +1,9 @@
 import PastportKit
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import SafariServices
+#endif
 
 /// iPhone and iPad: choose the ZIP that Safari's "Export Browsing Data" made. Nothing is read until the
 /// person chooses a file and passes Face ID, and the result stays in memory until the next lock.
@@ -17,6 +20,18 @@ public struct SafariImportSection: View {
                     .font(.headline).foregroundStyle(Palette.ink)
                 Text("Export from Safari, then choose the ZIP here. Pastport reads only the history and the Reading List. Passwords, cards and other bookmarks in the file are never opened.")
                     .font(.footnote).foregroundStyle(Palette.muted)
+                #if os(iOS)
+                Button {
+                    Task {
+                        do { try await SFSafariSettings.openExportBrowsingDataSettings() } catch { model.exportSheetFailed() }
+                    }
+                } label: {
+                    Label("Export from Safari", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Opens Safari's export sheet. You choose what to export and where to save it.")
+                #endif
                 Button { choosing = true } label: {
                     Label(model.importedHistoryActive ? "Choose another export" : "Choose Safari export",
                           systemImage: "doc.zipper")

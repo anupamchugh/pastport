@@ -61,6 +61,25 @@ struct AskPastportIntent: AppIntent {
     }
 }
 
+/// Imports a Safari export ZIP chosen in Shortcuts (for example "Find Files", newest ZIP). Face ID is asked before the
+/// file is opened, only the history and the Reading List are read, and the result lives in memory until Pastport
+/// locks. It returns nothing.
+struct ImportSafariExportIntent: AppIntent {
+    static let title: LocalizedStringResource = "Import Safari Export"
+    static let description = IntentDescription("Opens Pastport and imports a Safari export you choose. Face ID is asked first. Nothing is kept after you lock Pastport.")
+    static let supportedModes: IntentModes = .foreground
+
+    @Parameter(title: "Safari export", description: "The ZIP from Safari's Export Browsing Data.", supportedContentTypes: [.zip])
+    var file: IntentFile
+
+    @MainActor func perform() async throws -> some IntentResult {
+        let model = SharedTimeline.model
+        model.tab = .trail
+        model.importSafariExport(data: file.data)
+        return .result()
+    }
+}
+
 struct PastportShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
