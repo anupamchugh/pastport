@@ -1,4 +1,5 @@
 import AppKit
+import PastportConnected
 import PastportKit
 import PastportMac
 import PastportUI

@@ -28,6 +28,8 @@ targets:
       - package: Pastport
         product: PastportKit
       - package: Pastport
+        product: PastportConnected
+      - package: Pastport
         product: PastportUI
       - package: Pastport
         product: PastportMac
@@ -72,6 +74,8 @@ targets:
     dependencies:
       - package: Pastport
         product: PastportKit
+      - package: Pastport
+        product: PastportConnected
       - package: Pastport
         product: PastportUI
     settings:

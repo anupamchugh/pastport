@@ -6,26 +6,30 @@ let package = Package(
     platforms: [.macOS("27.0"), .iOS("27.0")],
     products: [
         .library(name: "PastportKit", targets: ["PastportKit"]),
+        .library(name: "PastportConnected", targets: ["PastportConnected"]),
         .library(name: "PastportUI", targets: ["PastportUI"]),
         .library(name: "PastportMac", targets: ["PastportMac"]),
     ],
     dependencies: [
         .package(url: "https://github.com/rryam/FoundationModelsKit.git",
                  revision: "65834b11d6da41e4a2f51003eba930b211d6f031"),
-        .package(url: "https://github.com/rudrankriyam/Foundation-Models-Framework-Lab.git",
-                 revision: "9e3dd5ae24ba6821626f24bfbbb187f4b88d7efe"),
     ],
     targets: [
-        // Cross-platform core: domain, detectors, sources as protocols, on-device AI.
+        // Cross-platform core: domain, detectors, sources as protocols, on-device AI. It links no
+        // package except FoundationModelsKit, so another app can depend on it alone.
         .target(name: "PastportKit", dependencies: [
             .product(name: "FoundationModelsKit", package: "FoundationModelsKit"),
-            .product(name: "FoundationModelsTools", package: "FoundationModelsKit"),
-            .product(name: "FoundationLabCore", package: "Foundation-Models-Framework-Lab"),
         ], swiftSettings: [.swiftLanguageMode(.v6)]),
+        // Opt-in Connected tools (weather, web, contacts, calendar...). Registered on a TimelineModel by the apps.
+        .target(name: "PastportConnected", dependencies: [
+            "PastportKit",
+            .product(name: "FoundationModelsKit", package: "FoundationModelsKit"),
+            .product(name: "FoundationModelsTools", package: "FoundationModelsKit"),
+        ]),
         // Shared SwiftUI views for the Mac and iOS apps. No AppKit, UIKit or I/O.
         .target(name: "PastportUI", dependencies: [
             "PastportKit",
-            .product(name: "FoundationLabCore", package: "Foundation-Models-Framework-Lab"),
+            "PastportConnected",
         ]),
         // Mac-only adapters: Safari's database via /usr/bin/sqlite3, osascript, local Ollama.
         .target(name: "PastportMac", dependencies: ["PastportKit"]),
@@ -37,12 +41,13 @@ let package = Package(
         ),
         .executableTarget(
             name: "PastportBar",
-            dependencies: ["PastportKit", "PastportUI", "PastportMac"]
+            dependencies: ["PastportKit", "PastportConnected", "PastportUI", "PastportMac"]
         ),
         .testTarget(
             name: "PastportKitTests",
             dependencies: ["PastportKit"]
         ),
+        .testTarget(name: "PastportConnectedTests", dependencies: ["PastportConnected", "PastportKit"]),
         .testTarget(name: "PastportEvalTests", dependencies: ["PastportEval", "PastportKit"]),
         .testTarget(name: "PastportMacTests", dependencies: ["PastportMac", "PastportKit"]),
     ],

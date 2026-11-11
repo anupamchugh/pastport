@@ -1,4 +1,4 @@
-import FoundationLabCore
+import PastportConnected
 import PastportKit
 import SwiftUI
 
@@ -45,7 +45,7 @@ public struct PrivacyScreen: View {
             heading("Connected tools", "point.3.connected.trianglepath.dotted")
             Text("Off until you choose them, up to three at a time. Every call waits for Allow once or Decline, and never receives your timeline.")
                 .font(.callout).foregroundStyle(Palette.muted)
-            ForEach(FoundationLabBuiltInTool.allCases) { tool in
+            ForEach(ConnectedTool.allCases) { tool in
                 HStack(alignment: .firstTextBaseline) {
                     Label(tool.displayName, systemImage: tool.systemImage).font(.callout).foregroundStyle(Palette.ink)
                     Spacer()

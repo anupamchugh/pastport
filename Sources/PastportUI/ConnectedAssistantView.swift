@@ -1,4 +1,4 @@
-import FoundationLabCore
+import PastportConnected
 import PastportKit
 import SwiftUI
 
@@ -51,7 +51,7 @@ public struct ConnectedAssistantView: View {
                     .foregroundStyle(.secondary)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 8)], spacing: 8) {
-                ForEach(FoundationLabBuiltInTool.allCases) { tool in
+                ForEach(ConnectedTool.allCases) { tool in
                     let available = ConnectedAssistantPolicy.isAvailable(tool)
                     Button {
                         model.toggleTool(tool)

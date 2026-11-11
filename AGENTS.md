@@ -5,7 +5,7 @@ Pastport searches your own Safari history in plain words, privately, as a macOS 
 This repository is public (`github.com/anupamchugh/pastport`). Anything pushed is published: no private paths, tokens or personal data in code, docs or commits.
 
 ## Structure
-- `Package.swift` owns all code: `PastportKit` (cross-platform core), `PastportUI` (shared SwiftUI; no AppKit, UIKit or I/O), `PastportMac` (Safari reader on a copied database via `/usr/bin/sqlite3`, osascript, Ollama), `PastportEval` (fictional Ask fixture and scorer, linked by the CLI only, never by an app), executables `pastport` (CLI) and `PastportBar`.
+- `Package.swift` owns all code: `PastportKit` (cross-platform core; links only FoundationModelsKit, so another app such as Feedloom can depend on it alone), `PastportConnected` (opt-in Connected tools; the only target that links FoundationModelsTools; the apps reach it through `model.connectedAssistant`), `PastportUI` (shared SwiftUI; no AppKit, UIKit or I/O), `PastportMac` (Safari reader on a copied database via `/usr/bin/sqlite3`, osascript, Ollama), `PastportEval` (fictional Ask fixture and scorer, linked by the CLI only, never by an app), executables `pastport` (CLI) and `PastportBar`.
 - `project.yml` (XcodeGen) wraps the package into two apps that share bundle `com.anupamchugh.Pastport`: `Pastport` (macOS menu-bar, `Sources/PastportBar`) and `PastportiOS` (iPhone and iPad, `Sources/PastportiOS`).
 - Read before changing behavior: `PRODUCT.md`, `DESIGN.md`, `docs/specs/`, `docs/ASK-EVAL.md`.
 
@@ -14,7 +14,7 @@ This repository is public (`github.com/anupamchugh/pastport`). Anything pushed i
 - `Pastport.xcodeproj` is generated and gitignored. Run `xcodegen generate` before any `xcodebuild` and after adding, moving or deleting a source file. Edit `project.yml`, never the project.
 - Mac app: `xcodebuild -project Pastport.xcodeproj -scheme Pastport -configuration Debug -destination 'platform=macOS' -derivedDataPath .build/xcode build`. Passing: `** BUILD SUCCEEDED **`.
 - iOS app: `xcodebuild -project Pastport.xcodeproj -scheme PastportiOS -destination 'generic/platform=iOS Simulator' build` (unverified destination).
-- Schemes (`xcodebuild -list`): apps `Pastport`, `PastportiOS`; package schemes `pastport`, `PastportBar`, `PastportKit`, `PastportMac`, `PastportUI`, `PastportEvalTests`. No `.xctestplan` files; the app targets have no test bundles, so every test is a package test.
+- Schemes (`xcodebuild -list`): apps `Pastport`, `PastportiOS`; package schemes `pastport`, `PastportBar`, `PastportKit`, `PastportConnected`, `PastportMac`, `PastportUI`, `PastportEvalTests`. No `.xctestplan` files; the app targets have no test bundles, so every test is a package test.
 - Scripts: `bash -n install.sh release-preflight.sh package-release.sh` (CI runs it). Lint: `swiftlint` (`.swiftlint.yml`; CI does not run it).
 - Ask eval: `swift run pastport ask-eval` (unverified invocation) runs on-device Foundation Models against the fictional fixture; needs Apple Intelligence on this Mac. Results go in `docs/ASK-EVAL.md`.
 

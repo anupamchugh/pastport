@@ -1,3 +1,4 @@
+import PastportConnected
 import PastportKit
 import PastportUI
 import SwiftUI

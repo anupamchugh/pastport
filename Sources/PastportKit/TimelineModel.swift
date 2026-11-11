@@ -97,7 +97,8 @@ public final class TimelineModel {
     public internal(set) var agentTrailStops: [AgentTrailStop] = []
     public internal(set) var agentTrailStatus = ""
     public internal(set) var agentTrailRunning = false
-    public let connectedAssistant = ConnectedAssistant()
+    /// Session state an app layer registered through `sessionState(_:make:)`. Every lock clears it.
+    @ObservationIgnored var sessionScoped: [ObjectIdentifier: any SessionScoped] = [:]
     /// The opt-in Codex connection (Mac). Off at every launch; every lock ends its approvals.
     public let codex = McpConnection()
 
@@ -280,7 +281,7 @@ public final class TimelineModel {
         let oldJourney = journey; journey = nil
         activeAnswerID = nil
         Task { await oldJourney?.clear() }
-        connectedAssistant.lockAndClear()
+        for state in sessionScoped.values { state.lockAndClear() }
         photoStatus = Self.photosClosed
         screenshotStatus = Self.screenshotsClosed
         status = "Locked. Cached history, photo activity, screenshots and answers cleared."

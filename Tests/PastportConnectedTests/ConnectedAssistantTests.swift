@@ -1,8 +1,8 @@
 import Foundation
-import FoundationLabCore
 import FoundationModels
 import FoundationModelsKit
 import Testing
+@testable import PastportConnected
 @testable import PastportKit
 
 @MainActor
@@ -45,7 +45,7 @@ private struct FakeConnectedTool: Tool {
 struct ConnectedAssistantTests {
     @Test("tool selection is capped at three")
     func toolSelectionCap() {
-        let selected: [FoundationLabBuiltInTool] = [.weather, .web, .calendar]
+        let selected: [ConnectedTool] = [.weather, .web, .calendar]
         #expect(ConnectedAssistantPolicy.canSelect(.weather, alongside: selected))
         #expect(!ConnectedAssistantPolicy.canSelect(.contacts, alongside: selected))
     }
@@ -161,16 +161,16 @@ struct ConnectedAssistantTests {
 
     @Test("every built-in tool has a tier")
     func everyToolHasATier() {
-        for tool in FoundationLabBuiltInTool.allCases {
+        for tool in ConnectedTool.allCases {
             let tier = ConnectedAssistantPolicy.tier(for: tool)
             #expect([ConnectedToolTier.onDevice, .mixed, .offDevice].contains(tier), "\(tool)")
         }
-        #expect(Set(FoundationLabBuiltInTool.allCases.map { ConnectedAssistantPolicy.tier(for: $0) }).count == 3)
+        #expect(Set(ConnectedTool.allCases.map { ConnectedAssistantPolicy.tier(for: $0) }).count == 3)
     }
 
     @Test("weather, web and web metadata send data off the iPhone")
     func offDeviceTools() {
-        for tool in [FoundationLabBuiltInTool.weather, .web, .webMetadata] {
+        for tool in [ConnectedTool.weather, .web, .webMetadata] {
             #expect(ConnectedAssistantPolicy.tier(for: tool) == .offDevice)
             #expect(ConnectedAssistantPolicy.tier(for: tool).label == "Sends data off this iPhone")
         }
@@ -180,7 +180,7 @@ struct ConnectedAssistantTests {
 
     @Test("contacts, calendar, reminders and health stay on the device")
     func onDeviceTools() {
-        for tool in [FoundationLabBuiltInTool.contacts, .calendar, .reminders, .health] {
+        for tool in [ConnectedTool.contacts, .calendar, .reminders, .health] {
             #expect(ConnectedAssistantPolicy.tier(for: tool) == .onDevice)
             #expect(ConnectedAssistantPolicy.tier(for: tool).label == nil)
         }

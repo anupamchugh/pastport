@@ -1,9 +1,9 @@
 import Foundation
-import FoundationLabCore
 import FoundationModels
 import FoundationModelsKit
 import FoundationModelsTools
 import Observation
+import PastportKit
 
 #if canImport(HealthKit)
 import HealthKit
@@ -107,7 +107,7 @@ public enum ConnectedToolTier: String, Sendable {
 public enum ConnectedAssistantPolicy {
     /// Music: now playing stays local, a catalog search goes to Apple Music (MusicCatalogSearchRequest).
     /// Location: the current position is read locally, geocoding and place search go to MapKit.
-    public static func tier(for tool: FoundationLabBuiltInTool) -> ConnectedToolTier {
+    public static func tier(for tool: ConnectedTool) -> ConnectedToolTier {
         switch tool {
         case .contacts, .calendar, .reminders, .health: .onDevice
         case .music, .location: .mixed
@@ -118,7 +118,7 @@ public enum ConnectedAssistantPolicy {
 
     /// The tier for an approval request, from the destination `makeTools` gave it.
     public static func tier(forDestination destination: String) -> ConnectedToolTier? {
-        let byDestination: [String: FoundationLabBuiltInTool] = [
+        let byDestination: [String: ConnectedTool] = [
             "Weather": .weather, "Web": .web, "Web metadata": .webMetadata, "Location": .location,
             "Health": .health, "Apple Music": .music, "Calendar": .calendar, "Reminders": .reminders,
             "Contacts": .contacts,
@@ -128,7 +128,7 @@ public enum ConnectedAssistantPolicy {
 
     public static let maximumSelectedTools = 3
 
-    public static func canSelect(_ tool: FoundationLabBuiltInTool, alongside selected: [FoundationLabBuiltInTool]) -> Bool {
+    public static func canSelect(_ tool: ConnectedTool, alongside selected: [ConnectedTool]) -> Bool {
         selected.contains(tool) || selected.count < maximumSelectedTools
     }
 
@@ -148,7 +148,7 @@ public enum ConnectedAssistantPolicy {
         #endif
     }
 
-    public static func isAvailable(_ tool: FoundationLabBuiltInTool) -> Bool {
+    public static func isAvailable(_ tool: ConnectedTool) -> Bool {
         tool != .health || healthIsAvailable
     }
 }
@@ -365,7 +365,7 @@ private extension Duration {
 /// Optional, source-separated connected-tools assistant for Pastport.
 @MainActor
 @Observable
-public final class ConnectedAssistant {
+public final class ConnectedAssistant: SessionScoped {
     public struct Message: Identifiable, Hashable, Sendable {
         public let id: UUID
         public let role: Role
@@ -385,7 +385,7 @@ public final class ConnectedAssistant {
 
     public var draft = ""
     public private(set) var messages: [Message] = []
-    public private(set) var selectedTools: [FoundationLabBuiltInTool] = []
+    public private(set) var selectedTools: [ConnectedTool] = []
     public private(set) var toolReceipts: [ConnectedToolReceipt] = []
     public private(set) var pendingApproval: ConnectedToolApprovalRequest?
     public private(set) var status = "Connected tools are off until you choose them."
@@ -442,7 +442,7 @@ public final class ConnectedAssistant {
         return "Session usage \(currentTokenUsage.totalTokenCount) tokens · context limit \(maxContextSize) · \(usage) · session \(sessionCount)"
     }
 
-    public func toggleTool(_ tool: FoundationLabBuiltInTool) {
+    public func toggleTool(_ tool: ConnectedTool) {
         guard ConnectedAssistantPolicy.isAvailable(tool) else {
             status = "Health is unavailable on this device and remains disabled."
             return
@@ -618,7 +618,7 @@ private extension ConnectedAssistant {
         toolReceipts.append(receipt)
     }
 
-    func makeTools(for tools: [FoundationLabBuiltInTool]) -> [any Tool] {
+    func makeTools(for tools: [ConnectedTool]) -> [any Tool] {
         let generationProvider: @MainActor @Sendable () -> UUID = { [weak self] in
             self?.generation ?? UUID()
         }
@@ -634,11 +634,11 @@ private extension ConnectedAssistant {
             case .contacts:
                 return [ReadOnlyContactsTool(approval: approval, generationProvider: generationProvider, receipt: receiptSink)]
             case .calendar:
-                return FoundationLabBuiltInTool.calendarToolsForPastport(
+                return ConnectedTool.calendarToolsForPastport(
                     approval: approval, generationProvider: generationProvider, receipt: receiptSink
                 )
             case .reminders:
-                return FoundationLabBuiltInTool.reminderToolsForPastport(
+                return ConnectedTool.reminderToolsForPastport(
                     approval: approval, generationProvider: generationProvider, receipt: receiptSink
                 )
             case .location:
@@ -670,7 +670,7 @@ private extension ConnectedAssistant {
     }
 }
 
-private extension FoundationLabBuiltInTool {
+private extension ConnectedTool {
     @MainActor
     static func calendarToolsForPastport(
         approval: ConnectedToolApprovalCoordinator,
@@ -696,4 +696,10 @@ private extension FoundationLabBuiltInTool {
             destination: "Reminders", service: "EventKit", receipt: receipt
         )]
     }
+}
+
+
+extension TimelineModel {
+    /// The Connected tools assistant for this model; made on first use and cleared by every lock.
+    public var connectedAssistant: ConnectedAssistant { sessionState(ConnectedAssistant.self) { ConnectedAssistant() } }
 }
