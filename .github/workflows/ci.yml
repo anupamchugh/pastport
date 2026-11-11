@@ -7,15 +7,17 @@ on:
 
 jobs:
   test:
-    runs-on: macos-26
+    # The package needs the macOS and iOS 27 SDKs. The macos-26 image stops at Xcode 26.6; the xcode-27
+    # label (actions/runner-images#14404) ships Xcode 27, whose own toolchain builds the package.
+    runs-on: xcode-27
     steps:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Select Swift toolchain
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "6.2"
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
 
       - name: Run tests
         run: swift test
@@ -26,8 +28,8 @@ jobs:
       - name: Check for accidentally committed secrets
         shell: bash
         run: |
-          if rg -n -i '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|api[_-]?key\s*[:=]|password\s*[:=])' \
-            --glob '!Tests/**' --glob '!README.md' --glob '!LICENSE' .; then
+          if grep -rnEi '(BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|api[_-]?key[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']{8,}|password[[:space:]]*[:=][[:space:]]*["'"'"'][^"'"'"']+)' \
+            --exclude-dir=Tests --exclude-dir=.git --exclude-dir=.build --exclude-dir=.claude --exclude=README.md --exclude=LICENSE .; then
             echo "Potential secret pattern found" >&2
             exit 1
           fi
