@@ -98,8 +98,8 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-func useApple() -> Bool { model.lowercased().hasPrefix("apple") || model.lowercased() == "foundation" }
-func modelName() -> String { useApple() ? AppleFoundation.displayName : model }
+@MainActor func useApple() -> Bool { model.lowercased().hasPrefix("apple") || model.lowercased() == "foundation" }
+@MainActor func modelName() -> String { useApple() ? AppleFoundation.displayName : model }
 
 // `mcp` reads no history: the Pastport app answers, after the person approves each request there.
 if command == "mcp" { McpBridge.run() }
@@ -116,7 +116,7 @@ default: fail("biometric unlock cancelled or failed — history kept closed.")
 }
 
 // ---- fetch helper with a friendly Full Disk Access hint ----
-func loadVisits(keyword: String?, hosts: [String] = [], fetchLimit: Int? = nil,
+@MainActor func loadVisits(keyword: String?, hosts: [String] = [], fetchLimit: Int? = nil,
                 anyOf: [String] = []) -> [Visit] {
     do {
         return try fetchVisits(days: days, keyword: keyword, limit: fetchLimit ?? limit,
