@@ -564,7 +564,7 @@ private struct JourneyPlanStep {
 }
 
 @Generable
-private struct JourneyRecommendationPayload {
+private struct JourneyRecommendationPayload: Sendable {
     @Guide(description: "Choose up to three distinct evidence-supported trail steps.", .count(1...3))
     var steps: [JourneyPlanStep]
     @Guide(description: "Concise follow-up questions grounded in the evidence packet. Do not invent facts.", .count(0...3))
@@ -701,13 +701,12 @@ private final class JourneyRuntime {
         let request = JourneyPrompts.recommendation(prompt: prompt, evidence: evidence)
         do {
             let schema = try JourneyRecommendationSchema.make(supported: evidence.supportedFocuses)
-            let response = try await runModelResponse {
-                try await self.session.respond(to: Prompt(request), schema: schema)
+            let (content, usage) = try await runModelRequest {
+                let response = try await self.session.respond(to: Prompt(request), schema: schema)
+                return (try JourneyRecommendationPayload(response.content), self.responseUsage(response))
             }
-            let usage = responseUsage(response)
             inputTokens = usage?.input
             outputTokens = usage?.output
-            let content = try JourneyRecommendationPayload(response.content)
             let candidate = JourneyPlanner.validatedFocuses(
                 content.steps.map { $0.focus.rawValue },
                 supported: evidence.supportedFocuses
@@ -829,9 +828,11 @@ private final class JourneyRuntime {
         if cancelled { throw CancellationError() }
     }
 
-    private func runModelResponse<Content: Generable>(
-        _ operation: @escaping @MainActor @Sendable () async throws -> LanguageModelSession.Response<Content>
-    ) async throws -> LanguageModelSession.Response<Content> {
+    /// Runs one model request on the main actor and hands back only what the caller needs. The
+    /// framework's `Response` is created and read inside `operation`, never sent across an isolation boundary.
+    private func runModelRequest<Result: Sendable>(
+        _ operation: @escaping @MainActor @Sendable () async throws -> Result
+    ) async throws -> Result {
         let requestID = UUID()
         let task = Task { @MainActor in
             try await operation()
@@ -1122,85 +1123,50 @@ func boundedTask<T: Sendable>(
 ) async throws -> T {
     let race = TimeoutRace<T>()
     return try await withCheckedThrowingContinuation { continuation in
-        race.install(continuation)
-        race.setOperation(Task {
-            do { race.finish(.success(try await operation())) }
-            catch { race.finish(.failure(error)) }
-        })
-        race.setDeadline(Task {
-            do {
-                try await Task.sleep(for: timeout)
-                await race.timeout(
-                    CLIError.msg("Apple Intelligence timed out after \(timeout.components.seconds) seconds"),
-                    beforeResume: onTimeout
-                )
-            } catch { }
-        })
+        Task {
+            await race.start(continuation, timeout: timeout, operation: operation, onTimeout: onTimeout)
+        }
     }
 }
 
-private final class TimeoutRace<T>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<T, Error>?
-    private var completed = false
-    var operation: Task<Void, Never>?
-    var deadline: Task<Void, Never>?
+/// Owns the continuation. Every access, and the single resume, happens in this actor's isolation.
+private actor TimeoutRace<T: Sendable> {
+    private var continuation: CheckedContinuation<T, any Error>?
+    private var operation: Task<Void, Never>?
+    private var deadline: Task<Void, Never>?
 
-    func install(_ continuation: CheckedContinuation<T, Error>) { lock.lock(); self.continuation = continuation; lock.unlock() }
-
-    func setOperation(_ task: Task<Void, Never>) {
-        lock.lock()
-        if completed { lock.unlock(); task.cancel(); return }
-        operation = task
-        lock.unlock()
+    func start(
+        _ continuation: CheckedContinuation<T, any Error>,
+        timeout: Duration,
+        operation: @escaping @Sendable () async throws -> T,
+        onTimeout: @escaping @MainActor @Sendable () -> Void
+    ) {
+        self.continuation = continuation
+        self.operation = Task {
+            do { self.finish(.success(try await operation())) }
+            catch { self.finish(.failure(error)) }
+        }
+        deadline = Task {
+            guard (try? await Task.sleep(for: timeout)) != nil else { return }
+            await self.timeOut(after: timeout, beforeResume: onTimeout)
+        }
     }
 
-    func setDeadline(_ task: Task<Void, Never>) {
-        lock.lock()
-        if completed { lock.unlock(); task.cancel(); return }
-        deadline = task
-        lock.unlock()
-    }
-
-    @discardableResult
-    func finish(_ result: Result<T, Error>) -> Bool {
-        lock.lock()
-        guard !completed else { lock.unlock(); return false }
-        completed = true
-        let continuation = self.continuation
+    private func finish(_ result: Result<T, any Error>) {
+        guard let continuation else { return }
         self.continuation = nil
-        let operation = self.operation
-        let deadline = self.deadline
-        lock.unlock()
         operation?.cancel()
         deadline?.cancel()
-        continuation?.resume(with: result)
-        return true
+        continuation.resume(with: result)
     }
 
-    func timeout(_ error: Error, beforeResume: @escaping @MainActor @Sendable () async -> Void) async {
-        guard let claim = claimTimeout() else { return }
-        claim.operation?.cancel()
-        claim.deadline?.cancel()
-        await beforeResume()
-        claim.continuation.resume(throwing: error)
-    }
-
-    private struct TimeoutClaim {
-        let continuation: CheckedContinuation<T, Error>
-        let operation: Task<Void, Never>?
-        let deadline: Task<Void, Never>?
-    }
-
-    private func claimTimeout() -> TimeoutClaim? {
-        lock.lock()
-        guard !completed, let continuation else { lock.unlock(); return nil }
-        completed = true
+    private func timeOut(after timeout: Duration, beforeResume: @MainActor @Sendable () -> Void) async {
+        guard let continuation else { return }
         self.continuation = nil
-        let operation = self.operation
-        let deadline = self.deadline
-        lock.unlock()
-        return TimeoutClaim(continuation: continuation, operation: operation, deadline: deadline)
+        operation?.cancel()
+        deadline?.cancel()
+        await beforeResume()
+        continuation.resume(throwing: CLIError.msg("Apple Intelligence timed out after \(timeout.components.seconds) seconds"))
     }
 }
 

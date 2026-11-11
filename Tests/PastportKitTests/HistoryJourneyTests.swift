@@ -78,6 +78,41 @@ struct HistoryJourneyTests {
         #expect(start.duration(to: .now) < .seconds(1))
     }
 
+    @Test("bounded work that finishes in time returns its value and never calls onTimeout")
+    func boundedTaskReturnsValueBeforeDeadline() async throws {
+        let timeouts = Counter()
+        let value = try await boundedTask(timeout: .seconds(5), operation: { 42 }, onTimeout: { timeouts.add() })
+        #expect(value == 42)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(timeouts.value == 0)
+    }
+
+    @Test("bounded work that throws in time rethrows that error")
+    func boundedTaskRethrowsOperationError() async {
+        struct Boom: Error {}
+        await #expect(throws: Boom.self) {
+            try await boundedTask(timeout: .seconds(5), operation: { () async throws -> Int in throw Boom() }, onTimeout: {})
+        }
+    }
+
+    @Test("a deadline runs onTimeout once, before the caller sees the timeout error")
+    func boundedTaskCallsOnTimeoutOnceBeforeThrowing() async throws {
+        let timeouts = Counter()
+        let seenAtThrow = Counter()
+        do {
+            _ = try await boundedTask(timeout: .milliseconds(20), operation: {
+                try await Task.sleep(for: .seconds(30))
+                return 1
+            }, onTimeout: { timeouts.add() })
+            Issue.record("expected a timeout")
+        } catch {
+            seenAtThrow.set(timeouts.value)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(seenAtThrow.value == 1, "onTimeout ran before the error was thrown")
+        #expect(timeouts.value == 1)
+    }
+
     @Test("Focus suggestions require matching evidence")
     func focusSelectionUsesEvidence() {
         #expect(
@@ -288,4 +323,12 @@ struct HistoryJourneyTests {
 private func nonCooperativeWork() -> Int {
     Thread.sleep(forTimeInterval: 2)
     return 7
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func add() { lock.withLock { count += 1 } }
+    func set(_ value: Int) { lock.withLock { count = value } }
+    var value: Int { lock.withLock { count } }
 }
