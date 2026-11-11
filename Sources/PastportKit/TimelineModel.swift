@@ -140,6 +140,8 @@ public final class TimelineModel {
     public var canImportHistory: Bool { importedHistory != nil }
     /// True from a successful import until the next lock. Observed: copy and cards depend on it.
     public internal(set) var importedHistoryActive = false
+    /// True while the fictional sample history is what is loaded. Dropped by every lock and by a real import.
+    public internal(set) var sampleActive = false
     /// The last import's outcome in plain words, shown beside the import button. Never names a file.
     public internal(set) var importStatus = ""
     /// The imported Reading List, from the export's Bookmarks.html. Empty until an import and after every lock.
@@ -270,7 +272,7 @@ public final class TimelineModel {
         operation?.cancel(); operation = nil; operationID = nil
         unlocked = false; busy = false; isLocked = true
         codex.revoke()
-        importedHistory?.clear(); importedHistoryActive = false; importStatus = ""
+        importedHistory?.clear(); importedHistoryActive = false; sampleActive = false; importStatus = ""
         visits = []; movements = []; threads = []; travel = []; themes = []
         photoEvents = []; screenshots = []; turns = []; skepticReviews = [:]; historian = nil; input = ""; pendingQuestion = nil
         coverage = ""; profile = ""; journeyReceipt = nil
@@ -386,7 +388,7 @@ public final class TimelineModel {
                 importStatus = error.description
             case .success(let export):
                 importedHistory.load(export)
-                importedHistoryActive = true
+                importedHistoryActive = true; sampleActive = false
                 unlocked = true; isLocked = false
                 importStatus = "Imported. This stays in memory on this device until you lock or leave Pastport."
                 imported = true

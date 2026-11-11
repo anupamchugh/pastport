@@ -41,11 +41,8 @@ extension TimelineModel {
     /// iPhone preview of an imported Safari export, built from fictional visits. No file is read.
     public func loadDemoImport() {
         guard let importedHistory else { return }
-        let reading = [ReadingListItem(title: "Slow trains across Europe", url: "https://guide.example/slow-trains"),
-                       ReadingListItem(title: "How a lens is made", url: "https://news.example/lens"),
-                       ReadingListItem(title: "A week in Lisbon", url: "https://guide.example/lisbon")]
         let export = SafariExportResult(visits: DemoData.visits, profiles: 1,
-                                        rowsRead: DemoData.visits.count, isPartial: false, readingList: reading)
+                                        rowsRead: DemoData.visits.count, isPartial: false, readingList: SampleHistory.readingList)
         importedHistory.load(export)
         importedHistoryActive = true
         unlocked = true; isLocked = false

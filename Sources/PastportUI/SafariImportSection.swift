@@ -40,6 +40,15 @@ public struct SafariImportSection: View {
                 .buttonStyle(.bordered)
                 .disabled(model.busy)
                 .accessibilityHint("Opens the file picker, then asks for Face ID before reading the ZIP")
+                if !model.importedHistoryActive {
+                    Button { model.trySampleHistory() } label: {
+                        Label("Try with sample history", systemImage: "sparkles")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(model.busy)
+                    .accessibilityHint("Loads fictional pages so you can look around. Reads nothing from Safari or this device.")
+                }
                 if !model.importStatus.isEmpty {
                     Text(model.importStatus).font(.footnote).foregroundStyle(Palette.ink)
                 }
