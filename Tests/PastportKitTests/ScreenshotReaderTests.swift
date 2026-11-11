@@ -253,6 +253,10 @@ final class ScreenshotReaderTests: XCTestCase {
     }
 
     func testProductionReaderUsesVisionBeforeScrubbing() async throws {
+        // GitHub's virtualized macOS runners cannot run Vision text recognition: the first request throws
+        // `unknownError` (CI run 42940107933). The check still runs on every Mac.
+        try XCTSkipIf(ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil,
+                      "Vision text recognition is unavailable on GitHub-hosted runners")
         let imageURL = try syntheticPNG(containing: "WhatsApp FAMILY BANK\nAccount balance\nOTP: 482931\nCard: 4242 4242 4242 4242\nEmail: alice@example.test")
         defer { try? FileManager.default.removeItem(at: imageURL) }
 
