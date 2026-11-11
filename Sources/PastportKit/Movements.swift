@@ -5,7 +5,7 @@ import Foundation
 /// "You're leaving…" interstitial to a map, embedding exact GPS in the redirect. Direct
 /// map look-ups count too. This is the "your iPhone just left an Airbnb" signal: where you
 /// were headed, and when, in the clear.
-public struct LocationLeak: Identifiable, Finding {
+public struct LocationLeak: Identifiable, Finding, Sendable {
     public let id = UUID()
     public let time: Date
     public let fromApp: String?     // the app you left, e.g. "Airbnb" — nil for a direct map look-up

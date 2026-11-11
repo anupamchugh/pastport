@@ -6,7 +6,7 @@ import Foundation
 /// window, which is exactly what a concentration filter is built to find. A booking is one
 /// or two visits to a transactional page and then silence — invisible to that filter by
 /// design. Two detectors, because they are two different things.
-public struct Booking: Identifiable, Finding {
+public struct Booking: Identifiable, Finding, Sendable {
     public let id = UUID()
     public let time: Date
     public let host: String

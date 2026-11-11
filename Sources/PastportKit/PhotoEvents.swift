@@ -2,7 +2,7 @@ import Foundation
 
 /// One image from the local Photos library, reduced to the facts the clusterer needs.
 /// Built by a PhotoKit provider in the app; built by hand in tests. No pixels here.
-public struct PhotoRecord {
+public struct PhotoRecord: Sendable {
     public let time: Date
     public let isScreenshot: Bool
     public let labels: [String]

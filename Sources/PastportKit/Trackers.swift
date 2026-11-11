@@ -2,14 +2,14 @@ import Foundation
 
 /// A tracking/redirect signal found in history — an outbound interstitial, a
 /// redirect chokepoint, or a URL carrying tracking parameters.
-public struct TrackerHit: Identifiable {
+public struct TrackerHit: Identifiable, Sendable {
     public let id = UUID()
     public let host: String
     public let kind: Kind
     public let count: Int
     public let example: String
 
-    public enum Kind: String { case interstitial, redirect, trackingParam = "tracking-param" }
+    public enum Kind: String, Sendable { case interstitial, redirect, trackingParam = "tracking-param" }
 
     public init(host: String, kind: Kind, count: Int, example: String) {
         self.host = host

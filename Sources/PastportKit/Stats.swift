@@ -1,28 +1,28 @@
 import Foundation
 
 /// Deterministic browsing stats — no model, computed straight from visits.
-public struct CategoryStat: Identifiable {
+public struct CategoryStat: Identifiable, Sendable {
     public let id = UUID()
     public let name: String
     public let visits: Int
     public init(name: String, visits: Int) { self.name = name; self.visits = visits }
 }
 
-public struct HourStat: Identifiable {
+public struct HourStat: Identifiable, Sendable {
     public let hour: Int   // 0–23
     public let visits: Int
     public var id: Int { hour }
     public init(hour: Int, visits: Int) { self.hour = hour; self.visits = visits }
 }
 
-public struct HostStat: Identifiable {
+public struct HostStat: Identifiable, Sendable {
     public let id = UUID()
     public let host: String
     public let visits: Int
     public init(host: String, visits: Int) { self.host = host; self.visits = visits }
 }
 
-public struct HistoryStats {
+public struct HistoryStats: Sendable {
     public let total: Int
     public let categories: [CategoryStat]   // visits per vertical (+ "Other"), most first
     public let hours: [HourStat]            // 24 buckets, 0…23

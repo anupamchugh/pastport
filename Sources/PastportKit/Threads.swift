@@ -5,7 +5,7 @@ import Foundation
 /// leaked by a tracker; the signal is the person's own words, typed into a search box and
 /// preserved in the page title. That is what makes a trip, a purchase decision, or a legal
 /// worry legible weeks later.
-public struct IntentThread: Identifiable, Finding {
+public struct IntentThread: Identifiable, Finding, Sendable {
     public let id = UUID()
     public let term: String          // the anchor term — the one that burst
     public let related: [String]     // terms that co-occurred with it
